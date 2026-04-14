@@ -1,0 +1,30 @@
+button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--primary);
+  color: white;
+  padding: 8px 14px;
+  margin-right: 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+button:hover {
+  background: var(--primary-hover);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button.secondary {
+  background: #2a2f3a;
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #353b48;
+}

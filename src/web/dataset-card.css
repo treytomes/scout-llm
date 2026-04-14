@@ -1,0 +1,11 @@
+.dataset-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 16px;
+  border-radius: 6px;
+  width: 400px;
+}
+
+.dataset-card h3 {
+  margin-top: 0;
+}

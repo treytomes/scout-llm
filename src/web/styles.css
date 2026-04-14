@@ -1,0 +1,40 @@
+@import url("./buttons.css");
+@import url("./dataset-card.css");
+
+:root {
+  --bg: #0f1115;
+  --panel: #151922;
+  --border: #2a2f3a;
+  --text: #d6d9e0;
+  --muted: #9aa3ad;
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+h1 {
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+pre {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-x: auto;
+  color: var(--muted);
+  font-size: 13px;
+}

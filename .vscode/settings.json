@@ -1,0 +1,27 @@
+{
+	"cSpell.words": [
+		"accum",
+		"Dispreferred",
+		"dotenv",
+		"fastapi",
+		"freqs",
+		"GELU",
+		"huggingface",
+		"interiority",
+		"logsigmoid",
+		"mistralai",
+		"multinomial",
+		"pycache",
+		"resourcegroups",
+		"safetensors",
+		"sentencepiece",
+		"typer",
+		"unreviewed",
+		"uvicorn",
+		"venv"
+	],
+	"editor.defaultFormatter": "ms-python.python",
+	"editor.formatOnPaste": true,
+	"editor.formatOnSave": true,
+	"editor.insertSpaces": true
+}
