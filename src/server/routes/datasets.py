@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query
+
 from server.runtime.dataset_manager import DatasetManager
 
-router = APIRouter()
 
+router = APIRouter()
 manager = DatasetManager()
 
 
@@ -31,3 +32,16 @@ def dataset_progress(name: str):
 def delete_dataset(name: str):
     manager.delete(name)
     return {"status": "deleted"}
+
+
+@router.get("/api/datasets/{name}/preview")
+def preview_dataset(
+    name: str,
+    limit: int = Query(20, ge=1, le=200),
+    page: int = Query(0, ge=0),
+    split: str = Query("train"),
+):
+    try:
+        return manager.get_preview(name, split, limit, page)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

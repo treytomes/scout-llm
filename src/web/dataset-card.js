@@ -12,7 +12,7 @@ class DatasetCard extends HTMLElement {
 
         <div class="controls">
           <button class="download">Download</button>
-          <button class="delete secondary">Delete</button>
+          <button class="delete danger">Delete</button>
         </div>
       </div>
     `;
@@ -20,10 +20,13 @@ class DatasetCard extends HTMLElement {
     this.statusEl = this.querySelector(".status");
     this.progressEl = this.querySelector("progress");
 
-    this.querySelector(".download")
+    this.downloadButton = this.querySelector(".download");
+    this.deleteButton = this.querySelector(".delete");
+
+    this.downloadButton
         .addEventListener("click", () => this.startDownload());
 
-    this.querySelector(".delete")
+    this.deleteButton
         .addEventListener("click", () => this.deleteDataset());
 
     this.refreshStatus();
@@ -36,16 +39,29 @@ class DatasetCard extends HTMLElement {
     if (data.downloaded) {
       this.statusEl.textContent = "Downloaded";
       this.progressEl.value = 100;
+
+      this.downloadButton.disabled = true;
+      this.deleteButton.disabled = false;
     } else if (data.downloading) {
       this.statusEl.textContent = "Downloading...";
+
+      this.downloadButton.disabled = true;
+      this.deleteButton.disabled = true;
+
       this.trackProgress();
     } else {
       this.statusEl.textContent = "Not downloaded";
       this.progressEl.value = 0;
+
+      this.downloadButton.disabled = false;
+      this.deleteButton.disabled = true;
     }
   }
 
   async startDownload() {
+    this.downloadButton.disabled = true;
+    this.deleteButton.disabled = true;
+    
     await fetch(`/api/datasets/${this.datasetName}/download`, {
       method: "POST"
     });

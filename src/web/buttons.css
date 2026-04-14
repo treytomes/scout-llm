@@ -20,6 +20,28 @@ button:active {
   transform: translateY(1px);
 }
 
+button.danger {
+  background: #dc3545;
+  border: 1px solid #b02a37;
+  color: white;
+}
+
+button.danger:hover {
+  background: #bb2d3b;
+}
+
+button.danger:disabled {
+  background: #3a1f22;
+  border-color: #3a1f22;
+  color: #777;
+  cursor: not-allowed;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 button.secondary {
   background: #2a2f3a;
   color: var(--text);

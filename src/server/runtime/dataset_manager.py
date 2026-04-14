@@ -1,4 +1,5 @@
 import json
+from datasets import load_from_disk
 from pathlib import Path
 from server.workers.dataset_downloader import DatasetDownloadJob
 
@@ -71,3 +72,35 @@ class DatasetManager:
 
         if name in self.jobs:
             del self.jobs[name]
+
+
+    def get_preview(self, name: str, split: str, limit: int, page: int):
+        dataset_path = self.dataset_path(name)
+
+        if not dataset_path.exists():
+            raise Exception("Dataset not downloaded.")
+
+        ds = load_from_disk(dataset_path)
+
+        # If dataset has splits, choose one
+        if not split:
+            split = "train" if "train" in ds else list(ds.keys())[0]
+        if hasattr(ds, "keys"):
+            ds = ds[split]
+
+        start = page * limit
+        end = start + limit
+        total = len(ds)
+
+        rows = []
+        for i in range(start, min(end, total)):
+            rows.append(ds[i])
+
+        return {
+            "dataset": name,
+            "split": split,
+            "page": page,
+            "limit": limit,
+            "total_rows": total,
+            "rows": rows
+        }
