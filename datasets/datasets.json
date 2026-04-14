@@ -1,8 +1,0 @@
-{
-  "TinyStories": {
-    "hf_path": "roneneldan/TinyStories"
-  },
-  "WildChat-50M": {
-    "hf_path": "allenai/WildChat"
-  }
-}
