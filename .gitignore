@@ -1,7 +1,6 @@
 .venv
 __pycache__
 *.parquet
-data/**/*
-
+data/datasets/**/*
 !data/datasets/datasets.json
 
