@@ -1,0 +1,21 @@
+@import url("./styles.css");
+
+.metadata {
+  margin-bottom: 15px;
+  color: #9aa3ad;
+}
+
+.metadata span {
+  margin-right: 20px;
+}
+
+.toolbar {
+  margin-bottom: 15px;
+}
+
+.table-container {
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  overflow: auto;
+  background: #151922;
+}

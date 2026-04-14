@@ -1,22 +1,19 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
-from server.routes import datasets
+import config as config
+from routes import datasets
 
 
 app = FastAPI()
-
-WEB_DIR = Path(__file__).parent.parent / "web"
-
-app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+app.mount("/static", StaticFiles(directory=config.WEB_DIR), name="static")
 app.include_router(datasets.router)
 
 
 @app.get("/")
 def index():
-    return FileResponse(WEB_DIR / "index.html")
+    return FileResponse(config.WEB_DIR / "index.html")
 
 
 @app.get("/api/hello")

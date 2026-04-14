@@ -1,3 +1,3 @@
 echo "Starting web server..."
 source .venv/bin/activate
-uvicorn server.app:app --app-dir ./src --root-path ./src --reload
+uvicorn app:app --app-dir ./src/server --root-path ./src --reload

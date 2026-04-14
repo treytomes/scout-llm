@@ -1,11 +1,8 @@
 import json
 from datasets import load_from_disk
-from pathlib import Path
-from server.workers.dataset_downloader import DatasetDownloadJob
 
-
-DATA_ROOT = Path("./datasets")
-DATASET_FILE = DATA_ROOT / "datasets.json"
+import config
+from workers.dataset_downloader import DatasetDownloadJob
 
 
 class DatasetManager:
@@ -14,15 +11,15 @@ class DatasetManager:
 
 
     def load_datasets(self):
-        if not DATASET_FILE.exists():
+        if not config.DATASET_FILE.exists():
             return {}
 
-        with open(DATASET_FILE, "r") as f:
+        with open(config.DATASET_FILE, "r") as f:
             return json.load(f)
         
 
     def dataset_path(self, name):
-        return DATA_ROOT / name
+        return config.DATA_ROOT / name
 
 
     def list_datasets(self):
@@ -82,7 +79,7 @@ class DatasetManager:
 
         ds = load_from_disk(dataset_path)
 
-        # If dataset has splits, choose one
+        # If dataset has splits, choose one.
         if not split:
             split = "train" if "train" in ds else list(ds.keys())[0]
         if hasattr(ds, "keys"):

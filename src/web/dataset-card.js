@@ -12,6 +12,7 @@ class DatasetCard extends HTMLElement {
 
         <div class="controls">
           <button class="download">Download</button>
+          <button class="preview secondary">Preview</button>
           <button class="delete danger">Delete</button>
         </div>
       </div>
@@ -21,10 +22,16 @@ class DatasetCard extends HTMLElement {
     this.progressEl = this.querySelector("progress");
 
     this.downloadButton = this.querySelector(".download");
+    this.previewButton = this.querySelector(".preview");
     this.deleteButton = this.querySelector(".delete");
 
     this.downloadButton
         .addEventListener("click", () => this.startDownload());
+
+    this.previewButton.addEventListener("click", () => {
+      window.location.href =
+        `/datasets?name=${encodeURIComponent(this.datasetName)}`;
+    });
 
     this.deleteButton
         .addEventListener("click", () => this.deleteDataset());
@@ -56,6 +63,8 @@ class DatasetCard extends HTMLElement {
       this.downloadButton.disabled = false;
       this.deleteButton.disabled = true;
     }
+
+    this.previewBtn.disabled = !data.downloaded;
   }
 
   async startDownload() {
@@ -98,6 +107,7 @@ class DatasetCard extends HTMLElement {
 
           this.progressEl.value = 100;
           this.statusEl.textContent = "Downloaded";
+          this.previewBtn.disabled = false;
         }
 
       } catch (err) {

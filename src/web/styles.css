@@ -1,5 +1,6 @@
 @import url("./buttons.css");
 @import url("./dataset-card.css");
+@import url("./table.css");
 
 :root {
   --bg: #0f1115;

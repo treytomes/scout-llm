@@ -1,0 +1,31 @@
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead {
+  background: #1b2029;
+}
+
+th {
+  text-align: left;
+  padding: 10px;
+  border-bottom: 1px solid #2a2f3a;
+  font-weight: 600;
+}
+
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #222630;
+  vertical-align: top;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+tbody tr:nth-child(even) {
+  background: #131720;
+}
+
+tbody tr:hover {
+  background: #1c2230;
+}

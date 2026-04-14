@@ -1,10 +1,17 @@
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
-from server.runtime.dataset_manager import DatasetManager
+import config as config
+from runtime.dataset_manager import DatasetManager
 
 
 router = APIRouter()
 manager = DatasetManager()
+
+
+@router.get("/datasets")
+def index():
+    return FileResponse(config.WEB_DIR / "preview.html")
 
 
 @router.get("/api/datasets")
