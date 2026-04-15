@@ -19,10 +19,10 @@ async function loadPage() {
     `Dataset Preview: ${datasetName}`;
 
   document.getElementById("metaDataset").textContent =
-    `Dataset: ${data.dataset}`;
+    `Dataset: ${data.name}`;
 
   document.getElementById("metaSplit").textContent =
-    `Split: ${data.split ?? "unknown"}`;
+    `Split: ${data.split_name ?? "unknown"}`;
 
   document.getElementById("metaRows").textContent =
     `Rows: ${data.total_rows}`;
@@ -87,6 +87,62 @@ function lastPage() {
   return Math.floor(totalRows / limit);
 }
 
+function formatNumber(n) {
+  return Number(n).toLocaleString();
+}
+
+function renderPlanTable(data) {
+  const table = document.getElementById("planTable");
+  table.innerHTML = "";
+
+  const rows = [
+    ["Dataset", data.dataset],
+    ["Split", data.split],
+    ["Total Tokens", formatNumber(data.total_tokens)],
+    ["Vocabulary Size", formatNumber(data.vocab_size)],
+    ["Sequence Length", formatNumber(data.sequence_length)],
+    ["Batch Size", formatNumber(data.batch_size)],
+    ["Tokens / Step", formatNumber(data.tokens_per_step)],
+    ["Training Samples", formatNumber(data.training_samples)],
+    ["Steps / Epoch", formatNumber(data.steps_per_epoch)]
+  ];
+
+  const tbody = document.createElement("tbody");
+
+  for (const [label, value] of rows) {
+    const tr = document.createElement("tr");
+
+    const tdLabel = document.createElement("td");
+    tdLabel.textContent = label;
+
+    const tdValue = document.createElement("td");
+    tdValue.textContent = value;
+
+    tr.appendChild(tdLabel);
+    tr.appendChild(tdValue);
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+}
+
+async function generatePlan() {
+  const blockSize = Number(document.getElementById("blockSizeInput").value);
+  const batchSize = Number(document.getElementById("batchSizeInput").value);
+
+  const res = await fetch(`/api/datasets/${datasetName}/training_plan`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      block_size: blockSize,
+      batch_size: batchSize
+    })
+  });
+
+  const data = await res.json();
+  renderPlanTable(data);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("firstBtn").onclick = () => {
     page = 0;
@@ -112,5 +168,7 @@ document.addEventListener("DOMContentLoaded", () => {
     window.location.href = '/';
   }
 
+  document.getElementById("planBtn").onclick = generatePlan;
+  
   loadPage();
 });

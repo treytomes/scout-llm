@@ -2,9 +2,11 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 import config as config
-from workers.dataset_download_job_manager import DatasetDownloadJobManager
-from corpus.dataset_repository import DatasetRepository
 from .models.dataset_preview import DatasetPreview
+from .models.training_plan_request import TrainingPlanRequest
+from ai_clients.tokenizer import load_tokenizer
+from corpus.dataset_repository import DatasetRepository
+from workers.dataset_download_job_manager import DatasetDownloadJobManager
 
 
 api_router = APIRouter(prefix="/api/datasets")
@@ -74,5 +76,78 @@ def preview_dataset(
         rows = model.get_rows(is_raw, split_name, limit, page)
 
         return DatasetPreview(name, split_name, page, limit, total_rows, rows)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/{name}/training_plan")
+def training_plan(name: str, req: TrainingPlanRequest):
+    try:
+        model = repo.get_dataset(name)
+        if not model.exists():
+            raise Exception("Dataset not downloaded.")
+
+        tokenizer = load_tokenizer()
+        dataset = model.get_normalized(req.split_name)
+
+        BATCH_SIZE = 100_000  # number of chunks per tokenizer call
+
+        batch = []
+        total_tokens = 0
+        n = 0
+        total = len(dataset)
+
+        print("Beginning token counting.")
+
+        for row in dataset:
+            chunk = row.get("chunk", "")
+            if not chunk:
+                continue
+
+            batch.append(chunk)
+
+            if len(batch) > BATCH_SIZE:
+                enc = tokenizer(
+                    batch,
+                    add_special_tokens=False,
+                    padding=False,
+                    truncation=False,
+                )
+                total_tokens += sum(len(ids) for ids in enc["input_ids"])
+                batch = []
+                print(f"Processed {n}/{total}")
+
+            n += 1
+
+        if batch:
+            enc = tokenizer(
+                batch,
+                add_special_tokens=False,
+                padding=False,
+                truncation=False,
+            )
+            total_tokens += sum(len(ids) for ids in enc["input_ids"])
+
+        print("Done.")
+
+        vocab_size = tokenizer.vocab_size
+        seq_len = req.block_size
+
+        samples = max(0, total_tokens - seq_len - 1)
+        tokens_per_step = seq_len * req.batch_size
+        steps_per_epoch = total_tokens / tokens_per_step
+
+        return {
+            "dataset": name,
+            "split": req.split_name,
+            "total_tokens": total_tokens,
+            "vocab_size": vocab_size,
+            "sequence_length": seq_len,
+            "batch_size": req.batch_size,
+            "tokens_per_step": tokens_per_step,
+            "training_samples": samples,
+            "steps_per_epoch": steps_per_epoch,
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -20,6 +20,25 @@
     <span id="metaPageCount"></span>
   </div>
 
+
+  <div class="planner">
+    <h2>Training Planner</h2>
+
+    <label>
+      Block Size
+      <input id="blockSizeInput" type="number" value="2048">
+    </label>
+
+    <label>
+      Batch Size
+      <input id="batchSizeInput" type="number" value="8">
+    </label>
+
+    <button id="planBtn">Generate Plan</button>
+
+    <table id="planTable" class="plan-table"></table>
+  </div>
+
   <div class="toolbar">
     <button id="firstBtn">First</button>
     <button id="prevBtn">Prev</button>
