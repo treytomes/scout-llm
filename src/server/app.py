@@ -4,11 +4,15 @@ from fastapi.staticfiles import StaticFiles
 
 import config as config
 from routes import datasets
+from routes import tokenizer
 
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=config.WEB_DIR), name="static")
-app.include_router(datasets.router)
+app.include_router(datasets.api_router)
+app.include_router(datasets.view_router)
+app.include_router(tokenizer.api_router)
+app.include_router(tokenizer.view_router)
 
 
 @app.get("/")

@@ -87,24 +87,30 @@ function lastPage() {
   return Math.floor(totalRows / limit);
 }
 
-document.getElementById("firstBtn").onclick = () => {
-  page = 0;
-  loadPage();
-};
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("firstBtn").onclick = () => {
+    page = 0;
+    loadPage();
+  };
 
-document.getElementById("prevBtn").onclick = () => {
-  if (page > 0) page--;
-  loadPage();
-};
+  document.getElementById("prevBtn").onclick = () => {
+    if (page > 0) page--;
+    loadPage();
+  };
 
-document.getElementById("nextBtn").onclick = () => {
-  page++;
-  loadPage();
-};
+  document.getElementById("nextBtn").onclick = () => {
+    page++;
+    loadPage();
+  };
 
-document.getElementById("lastBtn").onclick = () => {
-  page = lastPage();
-  loadPage();
-};
+  document.getElementById("lastBtn").onclick = () => {
+    page = lastPage();
+    loadPage();
+  };
 
-loadPage();
+  document.getElementById("homeButton").onclick= () => {
+    window.location.href = '/';
+  }
+
+  loadPage();
+});

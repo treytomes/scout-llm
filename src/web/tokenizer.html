@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tokenizer Test</title>
+    <link rel="stylesheet" href="/static/tokenizer.css">
+</head>
+
+<body>
+    <h1>Tokenizer Test</h1>
+
+    <div class="toolbar">
+        <button id="homeButton">Home</button>
+    </div>
+
+    <div>
+        <b>Tokenizer:</b> <span id="tokenizerName">loading...</span>
+    </div>
+
+    <h3>Input</h3>
+    <textarea id="inputText" class="debug-whitespace" placeholder="Enter text to tokenize..."></textarea>
+
+    <br><br>
+
+    <button onclick="tokenize()">Tokenize</button>
+
+    <h3>Token Count: <span id="tokenCount">0</span></h3>
+
+    <h3>Token Visualization</h3>
+    <div id="tokenBoxes"></div>
+
+    <h3>Reconstructed Text</h3>
+    <pre id="reconstructedText"></pre>
+
+    <h3>Round‑Trip Match</h3>
+    <div id="roundTripStatus"></div>
+
+    <h3>Character → Token Alignment</h3>
+    <div id="alignmentView"></div>
+
+    <h3>Token Strings</h3>
+    <pre id="tokenStrings"></pre>
+
+    <h3>Token IDs</h3>
+    <pre id="tokenIds"></pre>
+
+    <script type="module" src="/static/tokenizer.js"></script>
+</body>
+</html>

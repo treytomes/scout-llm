@@ -1,0 +1,85 @@
+@import url("./styles.css");
+
+textarea.debug-whitespace {
+    background-image:
+    linear-gradient(to right, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 4ch 100%;
+}
+
+.token-debug {
+    white-space: pre-wrap;
+    font-family: inherit;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.token-debug .space::after {
+    content: "·";
+    color: #6b7280;
+}
+
+.token-debug .tab::after {
+    content: "→";
+    color: #6b7280;
+}
+
+/* Token visualization panel */
+
+#tokenBoxes {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  min-height: 48px;
+  line-height: 1.8;
+  font-family: inherit;
+}
+
+/* Individual token */
+
+.token-box {
+  display: inline-block;
+  padding: 3px 6px;
+  margin: 2px;
+
+  border: 1px solid var(--border);
+  border-radius: 4px;
+
+  background: #1f2937;
+  color: var(--text);
+
+  font-size: 12px;
+}
+
+/* whitespace-heavy tokens */
+
+.token-box.whitespace {
+  background: #111827;
+  color: #9ca3af;
+}
+
+/* special tokens like <s> </s> */
+
+.token-box.special {
+  background: #312e81;
+  border-color: #6366f1;
+}
+
+/* hover inspection */
+
+.token-box:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  cursor: default;
+}
+
+#alignmentView {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  min-height: 48px;
+  line-height: 1.8;
+}

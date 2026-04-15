@@ -16,7 +16,6 @@ function show(data) {
 }
 
 async function loadDatasets() {
-
     const res = await fetch("/api/datasets");
     const datasets = await res.json();
 
@@ -30,9 +29,14 @@ async function loadDatasets() {
     }
 }
 
+function tokenizerTest() {
+    window.location.href = '/tokenizer';
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("helloButton").addEventListener("click", callHello);
     document.getElementById("statusButton").addEventListener("click", checkStatus);
+    document.getElementById("tokenizerButton").addEventListener("click", tokenizerTest);
 
     loadDatasets();
 });

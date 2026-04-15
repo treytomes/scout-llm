@@ -1,5 +1,4 @@
 class DatasetCard extends HTMLElement {
-
   connectedCallback() {
     this.datasetName = this.getAttribute("name");
 
@@ -29,8 +28,7 @@ class DatasetCard extends HTMLElement {
         .addEventListener("click", () => this.startDownload());
 
     this.previewButton.addEventListener("click", () => {
-      window.location.href =
-        `/datasets?name=${encodeURIComponent(this.datasetName)}`;
+      window.location.href = `/datasets/preview?name=${encodeURIComponent(this.datasetName)}`;
     });
 
     this.deleteButton
