@@ -15,6 +15,7 @@
 		"resourcegroups",
 		"safetensors",
 		"sentencepiece",
+		"TINYSTORIES",
 		"typer",
 		"unreviewed",
 		"uvicorn",

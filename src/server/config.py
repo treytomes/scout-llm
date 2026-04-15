@@ -16,3 +16,12 @@ TOKENIZER_NAME = "mistralai/Mistral-7B-v0.1"
 # Assets downloaded from HuggingFace should get dumped here.
 # Not datasets.
 HUGGINGFACE_CACHE_PATH = Path("../hf_cache")
+
+MODEL_TINYSTORIES = {
+    "dim": 512,
+    "layer": 12,
+    "heads": 8,
+    "mlp_ratio": 3.5,
+    "block_size": 512,
+    "dropout": 0.15,
+}
