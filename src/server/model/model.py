@@ -15,7 +15,7 @@ tokens
   │
 shared embedding
   │
-router (currently trivial)
+router (currently trivial — single module, no routing decision)
   │
 TinyStories transformer module
   │
@@ -30,12 +30,12 @@ tokens
   │
 shared embedding
   │
-router
+router (soft during training, hard during inference)
   │
- ┌──────────────┬──────────────┐
- │ TinyStories  │ reasoning    │
- │ module       │ module       │
- └──────────────┴──────────────┘
+ ┌──────────────┬──────────────┬──────────────┐
+ │ TinyStories  │ conversational│ reflective   │
+ │ module       │ module        │ module       │
+ └──────────────┴──────────────┴──────────────┘
   │
 shared output head
   │
@@ -44,10 +44,36 @@ logits
 Design goals
 ------------
 
-• Shared token embedding space
-• Modular transformer blocks
-• Router capable of selecting modules
-• Modules can be frozen independently
+• Shared token embedding space across all modules
+• Modular transformer blocks that can be frozen independently
+• Router using soft weighting during training, hard selection during inference
+• Modules added incrementally — freeze existing, grow new capacity
+• Each module sized to its training corpus
+• Developmental staging: language → conversation → reflection → inner voice
+
+Routing strategy
+----------------
+
+During training:
+    All active modules receive the input. Their outputs are weighted by the
+    router's softmax probabilities and summed. Gradients flow through both
+    the routing weights and all active module weights (unless frozen).
+
+During inference:
+    The router selects the single highest-probability module via argmax.
+    Hard selection — no blending. This is computationally efficient and
+    produces clean, committed outputs.
+
+Freezing strategy
+-----------------
+
+Before adding a new developmental module, call freeze_module(index) on all
+existing modules and optionally freeze_language_core(). Frozen parameters
+receive no gradient updates. New modules train freely while existing
+knowledge is preserved.
+
+The router is always retrained when modules are added, with its output
+dimension expanding to accommodate the new module.
 """
 
 import torch
@@ -56,10 +82,54 @@ import torch.nn.functional as F
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Model Configurations
+# ──────────────────────────────────────────────────────────────────────────────
+
+MODEL_TINYSTORIES = {
+    "dim": 512,
+    "layer": 12,
+    "heads": 8,
+    "mlp_ratio": 3.5,
+    "block_size": 512,
+    "dropout": 0.15,
+}
+
+# Future module configs — sized to their respective corpora and task complexity.
+# Conversational layer: richer structure, more varied vocabulary than TinyStories.
+# Reflective layer: highest representational density — first-person interiority.
+#
+# MODEL_CONVERSATIONAL = {
+#     "dim": 512,
+#     "layer": 8,
+#     "heads": 8,
+#     "mlp_ratio": 3.5,
+#     "block_size": 512,
+#     "dropout": 0.1,
+# }
+#
+# MODEL_REFLECTIVE = {
+#     "dim": 512,
+#     "layer": 6,
+#     "heads": 8,
+#     "mlp_ratio": 4.0,
+#     "block_size": 512,
+#     "dropout": 0.1,
+# }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Rotary Position Embeddings
 # ──────────────────────────────────────────────────────────────────────────────
 
 def precompute_rope_freqs(head_dim: int, max_seq: int, theta: float = 10000.0):
+    """
+    Precompute cosine and sine frequency tables for RoPE.
+
+    Rotary embeddings encode position by rotating query and key vectors.
+    Unlike learned absolute embeddings, RoPE generalises to unseen sequence
+    lengths and encodes relative rather than absolute position — important
+    for a model whose context window will grow across developmental stages.
+    """
 
     assert head_dim % 2 == 0
 
@@ -73,6 +143,7 @@ def precompute_rope_freqs(head_dim: int, max_seq: int, theta: float = 10000.0):
 
 
 def apply_rope(x, cos, sin):
+    """Apply rotary position embeddings to query or key tensor."""
 
     d = x.shape[-1]
 
@@ -181,12 +252,17 @@ class Block(nn.Module):
 
 class TransformerModule(nn.Module):
     """
-    A self-contained transformer module.
+    A self-contained transformer module representing one developmental layer.
 
-    Each module processes token representations and returns updated
-    hidden states.
+    Each module processes token representations and returns updated hidden
+    states in the shared embedding space. Modules are trained sequentially:
+    freeze the current module before adding and training the next.
 
-    Future modules can be added alongside the TinyStories module.
+    Developmental stages (planned):
+        Module 0 — TinyStories linguistic foundation
+        Module 1 — Conversational pattern (Scout's synthetic corpus)
+        Module 2 — First-person reflection (journals, inner voice)
+        Module 3 — Inner voice (dream transcripts, metacognition)
     """
 
     def __init__(self, dim, layers, heads, max_seq, mlp_ratio, dropout):
@@ -215,13 +291,31 @@ class TransformerModule(nn.Module):
 
 class Router(nn.Module):
     """
-    Simple routing layer.
+    Learned routing layer between shared embedding and transformer modules.
 
-    Currently:
-        selects the TinyStories module (index 0).
+    Training behaviour (soft routing):
+        Computes a softmax probability distribution over all modules.
+        Each module processes the input independently. Their outputs are
+        combined as a weighted sum using the routing probabilities.
+        Gradients flow through both routing weights and module weights,
+        allowing the router to learn which module handles which content.
 
-    Future versions:
-        learn routing decisions between multiple modules.
+    Inference behaviour (hard routing):
+        Selects the single highest-probability module via argmax.
+        Only that module runs. Clean, committed, computationally efficient.
+
+    When a new module is added via ScoutModel.add_module(), the router is
+    rebuilt with an expanded output dimension. Existing routing weights are
+    preserved; the new output is initialised to a small value so the new
+    module earns its routing share gradually through training.
+
+    Note on sequence-level vs token-level routing:
+        This router uses mean pooling to make one routing decision per
+        sequence. This is simpler to train and appropriate for modules that
+        represent distinct developmental registers (language, conversation,
+        reflection). Token-level routing — where different tokens within a
+        sequence route to different modules — is a natural future extension
+        if finer-grained specialisation becomes desirable.
     """
 
     def __init__(self, dim, num_modules):
@@ -230,20 +324,32 @@ class Router(nn.Module):
 
         self.num_modules = num_modules
 
-        # lightweight router network
-        self.router = nn.Linear(dim, num_modules)
+        # Lightweight router: mean-pooled sequence representation → module probs
+        self.gate = nn.Linear(dim, num_modules)
+
+        # Initialise to near-uniform routing so early training is stable
+        nn.init.normal_(self.gate.weight, mean=0.0, std=0.02)
+        nn.init.zeros_(self.gate.bias)
 
     def forward(self, x):
+        """
+        Returns:
+            Training:  (B, num_modules) softmax probabilities for soft weighting
+            Inference: (B,) integer module indices for hard selection
+        """
+
+        # Mean pool across sequence dimension → (B, dim)
         pooled = x.mean(dim=1)
-        logits = self.router(pooled)
+
+        logits = self.gate(pooled)
+
         probs = torch.softmax(logits, dim=-1)
-        # Return probs for weighted combination during training
-        # Return argmax for hard selection during inference
+
         if self.training:
-            module_index = probs
+            return probs                          # soft: weighted combination
         else:
-            module_index = torch.argmax(probs, dim=-1)
-        return module_index
+            return torch.argmax(probs, dim=-1)    # hard: single module
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Shared Language Core
@@ -251,13 +357,17 @@ class Router(nn.Module):
 
 class LanguageCore(nn.Module):
     """
-    Shared language layer.
+    Shared token embedding and output projection layer.
 
-    Provides:
-        token embeddings
-        output projection head
+    All transformer modules operate in this shared embedding space,
+    allowing representations learned in one module to be legible to others.
+    Weight tying between embedding and output head reduces parameter count
+    and improves training stability at this scale.
 
-    All modules operate in this shared embedding space.
+    The language core is frozen after the TinyStories phase. All subsequent
+    modules learn to work within the vocabulary space established here.
+    Freezing the core protects the shared embedding space from drift as new
+    modules are added — the linguistic foundation remains stable.
     """
 
     def __init__(self, vocab_size, dim):
@@ -268,7 +378,7 @@ class LanguageCore(nn.Module):
 
         self.head = nn.Linear(dim, vocab_size, bias=False)
 
-        # Weight tying
+        # Weight tying: output head shares weights with embedding matrix
         self.head.weight = self.emb.weight
 
         nn.init.normal_(self.emb.weight, mean=0.0, std=0.02)
@@ -287,25 +397,53 @@ class LanguageCore(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 class ScoutModel(nn.Module):
+    """
+    Scout's modular language model.
+
+    Designed for staged developmental growth:
+
+        Phase 1 — Train TinyStories module to convergence.
+                  Call freeze_module(0) and freeze_language_core().
+
+        Phase 2 — Call add_module(conversational_config).
+                  Train on Scout's synthetic conversational corpus.
+                  Call freeze_module(1).
+
+        Phase 3 — Call add_module(reflective_config).
+                  Train on first-person journals and inner voice corpus.
+                  Call freeze_module(2).
+
+        Phase 4 — Call add_module(inner_voice_config).
+                  Train on dream transcripts and metacognitive content.
+
+    At each phase the router is rebuilt to accommodate the new module.
+    Existing routing weights are preserved. The new module begins with
+    near-zero routing probability and earns its share through training.
+
+    The forward pass uses soft routing during training (weighted combination
+    of all active modules) and hard routing during inference (single module
+    selected by argmax). This ensures gradients flow through routing
+    decisions during training while producing clean outputs at inference.
+    """
 
     def __init__(self, vocab_size, config):
 
         super().__init__()
 
-        dim = config["dim"]
+        self._dim = config["dim"]
+        self._max_seq = config["block_size"]
 
-        self.max_seq = config["block_size"]
+        # Shared language layer — embedding and output head
+        self.language = LanguageCore(vocab_size, self._dim)
 
-        # Shared language layer
-        self.language = LanguageCore(vocab_size, dim)
+        # Router — rebuilt when modules are added
+        self.router = Router(self._dim, num_modules=1)
 
-        # Router
-        self.router = Router(dim, num_modules=1)
-
-        # Module list
-        self.modules_list = nn.ModuleList([
+        # Transformer modules — grown incrementally across developmental phases
+        # Named expert_modules to avoid shadowing nn.Module.modules()
+        self.expert_modules = nn.ModuleList([
             TransformerModule(
-                dim=dim,
+                dim=config["dim"],
                 layers=config["layer"],
                 heads=config["heads"],
                 max_seq=config["block_size"],
@@ -314,16 +452,165 @@ class ScoutModel(nn.Module):
             )
         ])
 
+    @property
+    def max_seq(self):
+        return self._max_seq
+
     def forward(self, idx):
+
         B, T = idx.shape
-        assert T <= self.max_seq
+
+        assert T <= self._max_seq, (
+            f"Sequence length {T} exceeds block size {self._max_seq}"
+        )
+
         x = self.language.embed(idx)
-        module_indices = self.router(x)
-        # Currently always selects module 0
-        module = self.modules_list[0]
-        x = module(x)
+
+        if self.training and len(self.expert_modules) > 1:
+            # Soft routing: weighted combination of all module outputs
+            probs = self.router(x)                      # (B, num_modules)
+
+            module_outputs = torch.stack(
+                [module(x) for module in self.expert_modules],
+                dim=1,
+            )                                           # (B, num_modules, T, dim)
+
+            # Weight each module output by its routing probability
+            weights = probs.unsqueeze(-1).unsqueeze(-1) # (B, num_modules, 1, 1)
+            x = (module_outputs * weights).sum(dim=1)   # (B, T, dim)
+
+        else:
+            # Hard routing (or single module): select one module
+            # During training with one module: skip router overhead entirely
+            if len(self.expert_modules) == 1:
+                x = self.expert_modules[0](x)
+            else:
+                module_indices = self.router(x)         # (B,)
+                # Batch items may route to different modules; handle per-item
+                # For typical inference with consistent input type, index 0
+                # will dominate. Full per-item routing follows:
+                outputs = []
+                for b in range(B):
+                    outputs.append(self.expert_modules[module_indices[b]](x[b].unsqueeze(0)))
+                x = torch.cat(outputs, dim=0)
+
         logits = self.language.logits(x)
+
         return logits
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Developmental Growth API
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def freeze_module(self, module_index: int):
+        """
+        Freeze a transformer module by index.
+
+        Call before adding the next developmental layer. Frozen parameters
+        receive no gradient updates — existing knowledge is preserved while
+        new capacity trains freely alongside it.
+        """
+
+        if module_index >= len(self.expert_modules):
+            raise IndexError(
+                f"Module index {module_index} out of range "
+                f"({len(self.expert_modules)} modules)"
+            )
+
+        for param in self.expert_modules[module_index].parameters():
+            param.requires_grad = False
+
+        print(f"Module {module_index} frozen.")
+
+    def freeze_language_core(self):
+        """
+        Freeze the shared embedding and output head.
+
+        Call after the TinyStories phase to protect the vocabulary space
+        established during linguistic bootstrapping. All subsequent modules
+        train within this shared embedding space without altering it.
+        """
+
+        for param in self.language.parameters():
+            param.requires_grad = False
+
+        print("Language core frozen.")
+
+    def add_module(self, config: dict):
+        """
+        Add a new transformer module and rebuild the router.
+
+        The new module is initialised with random weights and begins with
+        near-zero routing probability. It earns its routing share through
+        training on the new developmental corpus.
+
+        Existing module weights and routing weights are preserved. The router
+        gains one additional output, initialised to a small negative bias so
+        the existing modules remain dominant at the start of the new phase.
+
+        Args:
+            config: Module configuration dict. Must include dim, layer,
+                    heads, block_size, mlp_ratio, dropout. The dim and
+                    block_size must match the existing architecture.
+        """
+
+        assert config["dim"] == self._dim, (
+            f"New module dim {config['dim']} must match existing dim {self._dim}"
+        )
+
+        # Add new module
+        new_module = TransformerModule(
+            dim=config["dim"],
+            layers=config["layer"],
+            heads=config["heads"],
+            max_seq=config["block_size"],
+            mlp_ratio=config["mlp_ratio"],
+            dropout=config["dropout"],
+        )
+
+        self.expert_modules.append(new_module)
+        num_modules = len(self.expert_modules)
+
+        # Rebuild router with expanded output dimension
+        # Preserve existing routing weights; initialise new output conservatively
+        old_router = self.router
+        new_router = Router(self._dim, num_modules=num_modules)
+
+        with torch.no_grad():
+            # Copy existing gate weights and biases
+            new_router.gate.weight[:num_modules - 1] = old_router.gate.weight
+            new_router.gate.bias[:num_modules - 1] = old_router.gate.bias
+
+            # New module starts with small negative bias — earns routing share
+            # through training rather than being immediately dominant
+            new_router.gate.bias[num_modules - 1] = -2.0
+
+        self.router = new_router
+
+        print(
+            f"Module {num_modules - 1} added. "
+            f"Router expanded to {num_modules} modules."
+        )
+
+    def unfreeze_module(self, module_index: int):
+        """
+        Unfreeze a module for continued training.
+
+        Use with care — unfreezing a previously frozen module risks
+        catastrophic forgetting of the knowledge it encodes. Prefer adding
+        new modules over retraining existing ones.
+        """
+
+        if module_index >= len(self.expert_modules):
+            raise IndexError(
+                f"Module index {module_index} out of range "
+                f"({len(self.expert_modules)} modules)"
+            )
+
+        for param in self.expert_modules[module_index].parameters():
+            param.requires_grad = True
+
+        print(f"Module {module_index} unfrozen. Proceed with care.")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -331,14 +618,35 @@ class ScoutModel(nn.Module):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def count_parameters(model: nn.Module):
+    """
+    Return total, trainable, and frozen parameter counts.
+
+    The trainable/frozen split is the primary diagnostic for confirming
+    that the developmental freezing strategy is working as intended.
+    Before adding a new module, verify that the expected parameters
+    are frozen and only the new module is trainable.
+    """
 
     total = sum(p.numel() for p in model.parameters())
 
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    per_module = {}
+    for i, module in enumerate(model.expert_modules):
+        m_total = sum(p.numel() for p in module.parameters())
+        m_trainable = sum(p.numel() for p in module.parameters() if p.requires_grad)
+        per_module[f"module_{i}"] = {
+            "total": m_total,
+            "trainable": m_trainable,
+            "frozen": m_total - m_trainable,
+            "total_millions": round(m_total / 1e6, 2),
+        }
 
     return {
         "total": total,
         "trainable": trainable,
         "frozen": total - trainable,
         "total_millions": round(total / 1e6, 2),
+        "trainable_millions": round(trainable / 1e6, 2),
+        "per_module": per_module,
     }
