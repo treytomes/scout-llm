@@ -98,6 +98,10 @@ document.addEventListener("DOMContentLoaded", () => {
     loadInfo();
 
     document.getElementById("homeButton").onclick= () => {
-    window.location.href = '/';
+        window.location.href = '/';
+    }
+
+    document.getElementById("tokenizeButton").onclick= () => {
+        tokenize();
     }
 });
