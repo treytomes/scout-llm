@@ -1,8 +1,10 @@
 {
   "TinyStories": {
-    "hf_path": "roneneldan/TinyStories"
+    "hf_path": "roneneldan/TinyStories",
+    "normalizer": "TinyStoriesNormalizer"
   },
   "WildChat-50M": {
-    "hf_path": "allenai/WildChat"
+    "hf_path": "allenai/WildChat",
+    "normalizer": "WildChatNormalizer"
   }
 }

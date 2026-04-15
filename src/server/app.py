@@ -16,12 +16,22 @@ def index():
     return FileResponse(config.WEB_DIR / "index.html")
 
 
-@app.get("/api/hello")
-def hello():
-    return {
-        "message": "Hello from Scout server",
-        "status": "ok"
-    }
+# @app.get("/test")
+# def test():
+#     from corpus.dataset_repository import DatasetRepository
+#     repo = DatasetRepository()
+
+#     data = repo.list_datasets()
+#     ds_name = "WildChat-50M"
+#     data = repo.get_dataset(ds_name)
+#     if not data.is_normalized():
+#         repo.normalize_dataset(ds_name)
+#         data = repo.get_dataset(ds_name)
+#     data = data.get_rows(False, "train", 20, 0)
+#     return {
+#         "status": "ok",
+#         "data": data,
+#     }
 
 
 @app.get("/api/status")

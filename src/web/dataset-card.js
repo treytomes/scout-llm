@@ -40,7 +40,7 @@ class DatasetCard extends HTMLElement {
   }
 
   async refreshStatus() {
-    const res = await fetch(`/api/datasets/${this.datasetName}`);
+    const res = await fetch(`/api/datasets/${this.datasetName}/status`);
     const data = await res.json();
 
     if (data.downloaded) {
