@@ -1,3 +1,5 @@
+# corpus.models.dataset.py
+
 import datasets
 import shutil
 from pathlib import Path
@@ -9,7 +11,7 @@ from ..normalizers.dataset_normalizer import IDatasetNormalizer
 
 
 class Dataset:
-    _root: Path = config.DATA_ROOT
+    _root: Path = config.DATASETS_PATH
     _path_raw: Path
     _path_normalized: Path
     path: Path

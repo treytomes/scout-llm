@@ -19,7 +19,7 @@ class DatasetDownloadJobManager:
             
 
     def dataset_path(self, name) -> Path:
-        return config.DATA_ROOT / name / "transformed"
+        return config.DATASETS_PATH / name / "transformed"
     
 
     def job_status(self, name: str) -> DatasetJobStatus:

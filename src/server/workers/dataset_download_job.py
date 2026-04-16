@@ -46,7 +46,7 @@ class DatasetDownloadJob:
 
 
     def _run(self):
-        dataset_dir = config.DATA_ROOT / self.name
+        dataset_dir = config.DATASETS_PATH / self.name
         raw_dir = dataset_dir / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
 

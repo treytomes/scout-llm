@@ -3,4 +3,6 @@ __pycache__
 *.parquet
 data/datasets/**/*
 !data/datasets/datasets.json
+hf_cache
+
 

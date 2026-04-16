@@ -1,3 +1,5 @@
+# corpus.dataset_repository.py
+
 import json
 from pathlib import Path
 from typing import Self
@@ -10,7 +12,7 @@ from .normalizers.normalizer_factory import NormalizerFactory
 from .normalizers.dataset_normalizer import IDatasetNormalizer
 
 class DatasetRepository:
-    _data_root: Path = config.DATA_ROOT
+    _DATASETS_PATH: Path = config.DATASETS_PATH
     _dataset_file: Path = config.DATASET_FILE
 
 
@@ -31,7 +33,7 @@ class DatasetRepository:
             
 
     def dataset_path(self, name: str) -> Path:
-        return self._data_root / name / "transformed"
+        return self._DATASETS_PATH / name / "transformed"
     
 
     def status(self, name: str) -> DatasetStatus:

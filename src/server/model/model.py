@@ -80,41 +80,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Model Configurations
-# ──────────────────────────────────────────────────────────────────────────────
-
-MODEL_TINYSTORIES = {
-    "dim": 512,
-    "layer": 12,
-    "heads": 8,
-    "mlp_ratio": 3.5,
-    "block_size": 512,
-    "dropout": 0.15,
-}
-
-# Future module configs — sized to their respective corpora and task complexity.
-# Conversational layer: richer structure, more varied vocabulary than TinyStories.
-# Reflective layer: highest representational density — first-person interiority.
-#
-# MODEL_CONVERSATIONAL = {
-#     "dim": 512,
-#     "layer": 8,
-#     "heads": 8,
-#     "mlp_ratio": 3.5,
-#     "block_size": 512,
-#     "dropout": 0.1,
-# }
-#
-# MODEL_REFLECTIVE = {
-#     "dim": 512,
-#     "layer": 6,
-#     "heads": 8,
-#     "mlp_ratio": 4.0,
-#     "block_size": 512,
-#     "dropout": 0.1,
-# }
+import config
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -426,12 +392,11 @@ class ScoutModel(nn.Module):
     decisions during training while producing clean outputs at inference.
     """
 
-    def __init__(self, vocab_size, config):
-
+    def __init__(self, vocab_size, cfg):
         super().__init__()
 
-        self._dim = config["dim"]
-        self._max_seq = config["block_size"]
+        self._dim = cfg["dim"]
+        self._max_seq = cfg["block_size"]
 
         # Shared language layer — embedding and output head
         self.language = LanguageCore(vocab_size, self._dim)
@@ -443,12 +408,12 @@ class ScoutModel(nn.Module):
         # Named expert_modules to avoid shadowing nn.Module.modules()
         self.expert_modules = nn.ModuleList([
             TransformerModule(
-                dim=config["dim"],
-                layers=config["layer"],
-                heads=config["heads"],
-                max_seq=config["block_size"],
-                mlp_ratio=config["mlp_ratio"],
-                dropout=config["dropout"],
+                dim=cfg["dim"],
+                layers=cfg["layer"],
+                heads=cfg["heads"],
+                max_seq=cfg["block_size"],
+                mlp_ratio=cfg["mlp_ratio"],
+                dropout=cfg["dropout"],
             )
         ])
 

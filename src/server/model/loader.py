@@ -1,18 +1,27 @@
 """
 model/loader.py
-
-Shared model loading.
+Shared model loading for the modular Scout architecture.
 """
 
 import torch
 
 import config
 from ai_clients.tokenizer import load_tokenizer
-from .model import GPT
+from .model import ScoutModel
 
 
 def load_checkpoint(checkpoint_path, model, device):
+    """
+    Load a checkpoint into a ScoutModel.
+
+    Handles:
+    - compiled model checkpoints
+    - tensors dependent on BLOCK_SIZE (RoPE tables)
+    - router/module architecture differences
+    """
+
     checkpoint = torch.load(checkpoint_path, map_location=device)
+
     state = checkpoint["model"] if "model" in checkpoint else checkpoint
 
     # Fix compiled-model checkpoints
@@ -20,6 +29,7 @@ def load_checkpoint(checkpoint_path, model, device):
         state = {k.replace("_orig_mod.", ""): v for k, v in state.items()}
 
     # Remove tensors dependent on BLOCK_SIZE
+    # These are regenerated when the model is initialized
     state = {
         k: v
         for k, v in state.items()
@@ -28,25 +38,37 @@ def load_checkpoint(checkpoint_path, model, device):
         and "rope_sin" not in k
     }
 
-    # The `strict=False` bit should help remove the warnings about the missing mask tensors.
+    # Load state dict (allow missing keys for future modular expansion)
     model.load_state_dict(state, strict=False)
 
     return checkpoint, state
 
 
-def init_model(vocab_size, device):
-    model = GPT(
+def init_model(vocab_size, device, config_dict=None):
+    """
+    Initialize a ScoutModel.
+
+    If no config is provided, the TinyStories configuration is used.
+    """
+
+    if config_dict is None:
+        config_dict = config.MODEL_TINYSTORIES
+
+    model = ScoutModel(
         vocab_size=vocab_size,
-        dim=config.MODEL_DIM,
-        layers=config.MODEL_LAYERS,
-        heads=config.MODEL_HEADS,
-        max_seq=config.BLOCK_SIZE,
+        config=config_dict,
     ).to(device)
+
     return model
 
 
 def load_model(checkpoint_path, device):
+    """
+    Load tokenizer + model from checkpoint.
+    """
+
     tokenizer = load_tokenizer()
+
     vocab_size = tokenizer.vocab_size
 
     model = init_model(vocab_size, device)
@@ -54,5 +76,25 @@ def load_model(checkpoint_path, device):
     checkpoint, state = load_checkpoint(checkpoint_path, model, device)
 
     model.eval()
+
+    return model, tokenizer
+
+
+def load_fresh_model(device, config_dict=None):
+    """
+    Initialize a brand new model without loading a checkpoint.
+
+    Useful for starting a new training run.
+    """
+
+    tokenizer = load_tokenizer()
+
+    vocab_size = tokenizer.vocab_size
+
+    model = init_model(
+        vocab_size=vocab_size,
+        device=device,
+        config_dict=config_dict,
+    )
 
     return model, tokenizer
