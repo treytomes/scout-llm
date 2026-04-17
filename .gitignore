@@ -8,3 +8,5 @@ data/training_monitor/**/*
 !data/datasets/datasets.json
 hf_cache
 .claude/
+data/corpus/tinystories_dialogue/**/*
+data/corpus/tinystories_dialogue_test/**/*

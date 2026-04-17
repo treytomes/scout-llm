@@ -1,5 +1,7 @@
+boto3
 datasets
 fastapi
+pandas
 rich
 torch
 transformers
