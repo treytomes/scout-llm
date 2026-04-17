@@ -18,7 +18,7 @@ import config
 from corpus.dataset_repository import DatasetRepository
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(config.LOGGER_NAME)
 
 
 def tokenize_hf_dataset(

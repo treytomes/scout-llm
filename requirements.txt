@@ -1,5 +1,7 @@
 datasets
 fastapi
+rich
 torch
 transformers
+typer
 uvicorn[standard]

@@ -28,15 +28,27 @@ NUM_WORKERS    = os.cpu_count()
 # NUM_WORKERS    = os.cpu_count() // 2
 
 
-
 WEB_DIR = Path(__file__).parent.parent / "web"
 
-DATA_PATH = Path("./data")
+
+# BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).parent.parent.parent
+
+# Repository root (adjust if config.py is not at root)
+PROJECT_ROOT = BASE_DIR
+
+DATA_PATH = PROJECT_ROOT / "data" #Path("./data")
 DATASETS_PATH = DATA_PATH / "datasets"
 DATASET_FILE = DATASETS_PATH / "datasets.json"
 
 CHECKPOINT_DIR      = DATA_PATH / "checkpoints"
 CHECKPOINT_PATH     = Path(CHECKPOINT_DIR) / "latest.pt"
+
+TRAINING_LOG_DIR    = DATA_PATH / "training_log"
+TRAINING_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGER_NAME = "scout-llm"
+
 
 MODEL_NAME = "Scout"
 USER_NAME = "Trey"
@@ -126,3 +138,46 @@ MODEL_TINYSTORIES = {
 #     "block_size": 512,
 #     "dropout": 0.1,
 # }
+
+#
+# Generation parameters (how the model speaks)
+#
+
+# This limits how many tokens the model is allowed to generate in a single response.
+# 
+# Kept short intentionally — Scout's coherent window at 50M is ~3 sentences.
+# Increase as coherence improves with scale.
+# MAX_NEW_TOKENS = BLOCK_SIZE // 4
+MAX_NEW_TOKENS = BLOCK_SIZE
+
+# Temperature controls randomness in sampling.
+# Lower values → safer, repetitive, predictable.
+# Higher values → more creative but more errors.
+# Typical range:
+# | Temperature | Behavior |
+# |---|---|
+# | 0.2–0.4 | deterministic |
+# | 0.5–0.7 | balanced |
+# | 0.8–1.0 | creative |
+# | >1.0 | chaotic |
+TEMPERATURE    = 0.7   # Try raising this later in the training cycle.
+
+# Top‑K sampling restricts token choices to the K most probable tokens.
+# Example:
+# 
+# If the vocabulary has 32k tokens but TOP_K = 40, the model only samples from the 40 most likely next tokens.
+# 
+# This reduces:
+# * nonsense outputs
+# * rare-token glitches
+# * degenerate sampling loops
+TOP_K          = 40
+
+# This penalizes tokens that already appeared earlier in the response.
+# Typical values:
+# | Value | Effect |
+# |---|---|
+# | 1.0 | off |
+# | 1.1 | mild |
+# | 1.2–1.5 | strong |
+REP_PENALTY    = 1.3

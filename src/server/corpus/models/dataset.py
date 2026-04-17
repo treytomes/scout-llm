@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Self
 
 import config
+from ai_clients.tokenizer import load_tokenizer
 from .dataset_status import DatasetStatus
 from ..normalizers.dataset_normalizer import IDatasetNormalizer
 
@@ -14,6 +15,7 @@ class Dataset:
     _root: Path = config.DATASETS_PATH
     _path_raw: Path
     _path_normalized: Path
+    _path_tokenized: Path
     path: Path
 
 
@@ -22,6 +24,7 @@ class Dataset:
         self.path = self._root / name
         self._path_raw = self.path / "raw"
         self._path_normalized = self.path / "normalized"
+        self._path_tokenized = self.path / "tokenized"
 
     
     def delete(self) -> None:
@@ -41,14 +44,18 @@ class Dataset:
         return self._path_normalized.exists()
     
 
+    def is_tokenized(self) -> bool:
+        return self._path_tokenized.exists()
+    
+
     def status(self) -> DatasetStatus:
         return DatasetStatus(self.name, self.path)
     
     
     def get_split_names(self) -> list[str]:
         data = datasets.load_from_disk(self._path_raw)
-        if data is  hasattr(data, "keys"):
-            return data.keys
+        if hasattr(data, "keys"):
+            return data.keys()
         return []
     
     
@@ -91,6 +98,53 @@ class Dataset:
         print("Normalization complete.")
 
 
+    def tokenize(self) -> None:
+        """
+        Tokenize all normalized dataset splits and persist the tokenized dataset.
+        Adds an EOS token to the end of every chunk so the model learns sequence termination.
+        """
+        if not self._path_normalized.exists():
+            raise FileExistsError("Dataset has not been normalized.")
+
+        tokenizer = load_tokenizer()
+        eos_id = tokenizer.eos_token_id
+
+        print("Loading normalized dataset")
+        data = datasets.load_from_disk(self._path_normalized)
+
+        def tokenize_row(row):
+            text = row.get("chunk")
+            if not text:
+                return {"tokens": []}
+
+            tokens = tokenizer.encode(text, add_special_tokens=False)
+
+            # Append EOS token if available
+            if eos_id is not None:
+                tokens.append(eos_id)
+
+            return {"tokens": tokens}
+
+        print("Tokenizing dataset")
+
+        if isinstance(data, datasets.DatasetDict):
+            for split_name in data.keys():
+                data[split_name] = data[split_name].map(
+                    tokenize_row,
+                    remove_columns=data[split_name].column_names,
+                )
+        else:
+            data = data.map(
+                tokenize_row,
+                remove_columns=data.column_names,
+            )
+
+        print(f"Saving tokenized dataset to `{self._path_tokenized}`.")
+        data.save_to_disk(self._path_tokenized)
+
+        print("Tokenization complete.")
+
+
     def get_raw(self, split_name: str = "train") -> datasets.Dataset:
         if not self._path_raw.exists():
             raise FileExistsError("Raw dataset has not been downloaded.")
@@ -106,6 +160,17 @@ class Dataset:
         if not self._path_normalized.exists():
             raise FileExistsError("Dataset has not been normalized.")
         data = datasets.load_from_disk(self._path_normalized)
+        if isinstance(data, datasets.Dataset):
+            return data
+        
+        # `data` must be a a `datasets.DatasetDict`.
+        return data[split_name] 
+    
+
+    def get_tokenized(self, split_name: str = "train") -> datasets.Dataset:
+        if not self._path_tokenized.exists():
+            raise FileExistsError("Dataset has not been normalized.")
+        data = datasets.load_from_disk(self._path_tokenized)
         if isinstance(data, datasets.Dataset):
             return data
         

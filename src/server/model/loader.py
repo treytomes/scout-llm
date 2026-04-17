@@ -56,7 +56,7 @@ def init_model(vocab_size, device, config_dict=None):
 
     model = ScoutModel(
         vocab_size=vocab_size,
-        config=config_dict,
+        cfg=config_dict,
     ).to(device)
 
     return model
@@ -77,7 +77,7 @@ def load_model(checkpoint_path, device):
 
     model.eval()
 
-    return model, tokenizer
+    return model
 
 
 def load_fresh_model(device, config_dict=None):
@@ -97,4 +97,4 @@ def load_fresh_model(device, config_dict=None):
         config_dict=config_dict,
     )
 
-    return model, tokenizer
+    return model

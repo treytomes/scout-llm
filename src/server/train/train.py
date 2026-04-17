@@ -32,7 +32,7 @@ from model.loader import (
 from model.model import count_parameters
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(config.LOGGER_NAME)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -115,21 +115,18 @@ def try_resume_checkpoint(model, optimizer, scheduler, checkpoint_dir, device):
 # ─────────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def validation_loss(model, val_tokens, device, num_batches=20):
-    model.eval()
+def validation_loss(model, loader, device, num_batches: int = 20):
+    """
+    Compute validation loss using a DataLoader built from the
+    dataset's validation split.
+    """
 
-    loader = build_dataloader(
-        val_tokens,
-        block_size=config.BLOCK_SIZE,
-        batch_size=config.BATCH_SIZE,
-        shuffle=False,
-    )
+    model.eval()
 
     total_loss = 0.0
     count = 0
 
     for batch in loader:
-
         if count >= num_batches:
             break
 
@@ -137,9 +134,7 @@ def validation_loss(model, val_tokens, device, num_batches=20):
         y = batch["labels"].to(device)
 
         with torch.autocast(device_type=device.type, dtype=torch.bfloat16):
-
             logits = model(x)
-
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 y.view(-1),
@@ -178,56 +173,100 @@ def build_log_path(prefix="training"):
 # Training entry point
 # ─────────────────────────────────────────────────────────────
 
-def run_training():
+def run_training(
+    dataset_name: str,
+    model_config: dict,
+    batch_size: int,
+    max_steps: int,
+):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
     logger.info("Device: %s", device)
 
-    token_file = Path(config.DATA_PATH)
     checkpoint_dir = Path(config.CHECKPOINT_DIR)
 
-    val_token_file = token_file.parent / "corpus_val.pt"
+    tokenizer = load_tokenizer()
+    logger.info("Tokenizer loaded.")
 
-    ##########################################
-    # # ── Load corpus ───────────────────────────────────────────
-    # logger.info("Loading corpus: %s", token_file)
-    # tokens, vocab_size = load_token_tensor(token_file)
-    # logger.info("Corpus tokens: %d", len(tokens))
+    # --------------------------------------------------
+    # CSV logging
+    # --------------------------------------------------
 
-    val_tokens = None
+    metrics_path = build_log_path()
 
-    # if val_token_file.exists():
-    #     val_tokens, _ = load_token_tensor(val_token_file)
-    #     logger.info("Validation corpus loaded (%d tokens)", len(val_tokens))
+    csv_file = open(metrics_path, "a", newline="")
 
-    # # ── DataLoader ───────────────────────────────────────────
-    # loader = build_dataloader(
-    #     tokens,
-    #     block_size=config.BLOCK_SIZE,
-    #     batch_size=config.BATCH_SIZE,
-    #     shuffle=True,
-    # )
-    #################################################
+    csv_writer = csv.DictWriter(
+        csv_file,
+        fieldnames=[
+            "step",
+            "loss",
+            "avg_loss",
+            "lr",
+            "val_loss",
+            "elapsed",
+            "tokens_per_sec",
+            "eta",
+        ],
+    )
+
+    if csv_file.tell() == 0:
+        csv_writer.writeheader()
+    logger.info("CSV log file ready.")
+
+    # --------------------------------------------------
+    # Load dataset
+    # --------------------------------------------------
 
     repo = DatasetRepository()
-    dataset_model = repo.get_dataset(config.TRAIN_DATASET)
-    dataset = dataset_model.get_normalized("train")
 
-    tokenizer = load_tokenizer()
-    dataset = PackedChunkDataset(dataset, tokenizer, block_size=config.BLOCK_SIZE)
+    dataset_model = repo.get_dataset(dataset_name)
+    if not dataset_model.is_tokenized():
+        dataset_model.tokenize()
+    
+    train_dataset = dataset_model.get_tokenized("train")
 
-    loader = DataLoader(
-        dataset,
-        batch_size=config.BATCH_SIZE,
-        shuffle=True,
-        num_workers=config.NUM_WORKERS
+    val_dataset = None
+    if "validation" in dataset_model.get_split_names():
+        val_dataset = dataset_model.get_tokenized("validation")
+
+    logger.info("Begin packing dataset.")
+    train_dataset = PackedChunkDataset(
+        train_dataset,
+        block_size=model_config["block_size"],
     )
+    logger.info("Done packing dataset.")
+
+    logger.info("Setting up data loader.")
+    loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=config.NUM_WORKERS,
+    )
+    logger.info("Done setting up data loader.")
+
+    val_loader = None
+    if val_dataset is not None:
+
+        val_dataset = PackedChunkDataset(
+            val_dataset,
+            block_size=model_config["block_size"],
+        )
+
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=config.NUM_WORKERS,
+        )
 
     data_iter = iter(loader)
 
-    # ── Model ────────────────────────────────────────────────
+    # --------------------------------------------------
+    # Model
+    # --------------------------------------------------
 
-    model = load_fresh_model(device, config.MODEL_TINYSTORIES)
+    model = load_fresh_model(device, model_config)
 
     param_stats = count_parameters(model)
 
@@ -237,7 +276,9 @@ def run_training():
         param_stats["total"] / 1e6,
     )
 
-    # ── Optimizer ────────────────────────────────────────────
+    # --------------------------------------------------
+    # Optimizer
+    # --------------------------------------------------
 
     optimizer = AdamW(
         model.parameters(),
@@ -246,16 +287,20 @@ def run_training():
         betas=(0.9, 0.95),
     )
 
-    # ── Scheduler ────────────────────────────────────────────
+    # --------------------------------------------------
+    # Scheduler
+    # --------------------------------------------------
 
     scheduler = build_scheduler(
         optimizer,
-        total_steps=config.MAX_STEPS,
+        total_steps=max_steps,
         warmup_steps=config.WARMUP_STEPS,
         min_lr=config.MIN_LR,
     )
 
-    # ── Resume checkpoint ───────────────────────────────────
+    # --------------------------------------------------
+    # Resume checkpoint
+    # --------------------------------------------------
 
     start_step = try_resume_checkpoint(
         model,
@@ -272,17 +317,17 @@ def run_training():
 
     start_time = time.time()
     last_log_time = start_time
-
     accum_loss = 0.0
 
-    logger.info("Training from step %d → %d", start_step, config.MAX_STEPS)
+    logger.info("Training from step %d → %d", start_step, max_steps)
 
-    # ── Training loop ───────────────────────────────────────
+    # --------------------------------------------------
+    # Training loop
+    # --------------------------------------------------
 
-    while step < config.MAX_STEPS:
+    while step < max_steps:
         try:
             batch = next(data_iter)
-
         except StopIteration:
             data_iter = iter(loader)
             batch = next(data_iter)
@@ -303,33 +348,58 @@ def run_training():
 
         optimizer.step()
         scheduler.step()
-
         optimizer.zero_grad()
 
         accum_loss += loss.item()
 
-        # ── Logging ──────────────────────────────────────────
+        # --------------------------------------------------
+        # Logging
+        # --------------------------------------------------
 
         if step % config.LOG_INTERVAL == 0:
             now = time.time()
+
             elapsed = now - start_time
             interval = now - last_log_time
             last_log_time = now
+
             step_time = interval / max(config.LOG_INTERVAL, 1)
-            tokens_per_step = config.BLOCK_SIZE * config.BATCH_SIZE
-            tokens_per_sec = (tokens_per_step * config.LOG_INTERVAL) / max(interval, 1e-6)
-            remaining_steps = config.MAX_STEPS - step
+
+            tokens_per_step = model_config["block_size"] * batch_size
+
+            tokens_per_sec = (
+                tokens_per_step * config.LOG_INTERVAL
+            ) / max(interval, 1e-6)
+
+            remaining_steps = max_steps - step
             eta = remaining_steps * step_time
+
             current_lr = scheduler.get_last_lr()[0]
+
             avg_loss = accum_loss / max(step - start_step + 1, 1)
+
             val_loss = None
 
             if (
-                val_tokens is not None
+                val_loader is not None
                 and step > 0
                 and step % (config.LOG_INTERVAL * 10) == 0
             ):
-                val_loss = validation_loss(model, val_tokens, device)
+                val_loss = validation_loss(model, val_loader, device)
+
+            metrics = {
+                "step": step,
+                "loss": loss.item(),
+                "avg_loss": avg_loss,
+                "lr": current_lr,
+                "val_loss": val_loss,
+                "elapsed": elapsed,
+                "tokens_per_sec": tokens_per_sec,
+                "eta": eta,
+            }
+
+            csv_writer.writerow(metrics)
+            csv_file.flush()
 
             logger.info(
                 "step %d | loss %.4f | lr %.6f | %.0f tok/s",
@@ -339,9 +409,14 @@ def run_training():
                 tokens_per_sec,
             )
 
-        # ── Checkpoint ──────────────────────────────────────
+            yield metrics
+
+        # --------------------------------------------------
+        # Checkpoint
+        # --------------------------------------------------
 
         if step % config.SAVE_INTERVAL == 0 and step > start_step:
+
             save_checkpoint(
                 checkpoint_dir,
                 step,
@@ -350,13 +425,15 @@ def run_training():
                 scheduler,
                 {
                     "vocab_size": tokenizer.vocab_size,
-                    "block_size": config.BLOCK_SIZE,
+                    "block_size": model_config["block_size"],
                 },
             )
 
         step += 1
 
     logger.info("Training complete.")
+
+    csv_file.close()
 
     save_checkpoint(
         checkpoint_dir,

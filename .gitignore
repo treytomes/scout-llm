@@ -1,8 +1,9 @@
 .venv
 __pycache__
 *.parquet
+data/checkpoints/**/*
+data/training_log/**/*
 data/datasets/**/*
 !data/datasets/datasets.json
 hf_cache
-
 
