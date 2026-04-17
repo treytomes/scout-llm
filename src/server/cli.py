@@ -50,6 +50,40 @@ def chat(
 
 
 @app.command()
+def probe(
+    prompt: str,
+    model: str = typer.Option("latest", "--model", "-m"),
+):
+    """
+    Send a single prompt to a checkpoint and print the response.
+    Example:
+        cli.py probe "Once upon a time" --model latest
+    """
+    import torch
+    from cli_repl import stream_generate
+    from model.loader import load_model
+    from ai_clients.tokenizer import load_tokenizer
+
+    checkpoint_dir = config.CHECKPOINT_PATH.parent
+    checkpoint_path = checkpoint_dir / f"{model}.pt"
+    if not checkpoint_path.exists():
+        raise typer.BadParameter(f"Checkpoint not found: {checkpoint_path}")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info("Loading checkpoint: %s", checkpoint_path)
+    model = load_model(checkpoint_path, device)
+    tokenizer = load_tokenizer()
+
+    logger.info("Prompt: %s", prompt)
+    print()  # blank line before output
+
+    for piece in stream_generate(model, tokenizer, prompt, device):
+        print(piece, end="", flush=True)
+
+    print()  # newline after completion
+    
+
+@app.command()
 def train():
     """
     Launch model training.
