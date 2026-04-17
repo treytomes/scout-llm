@@ -15,6 +15,7 @@ app.include_router(datasets.view_router)
 app.include_router(tokenizer.api_router)
 app.include_router(tokenizer.view_router)
 app.include_router(training.api_router)
+app.include_router(training.view_router)
 
 
 @app.get("/")

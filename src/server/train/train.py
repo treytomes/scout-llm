@@ -161,7 +161,7 @@ def build_log_path(prefix="training"):
     idx = 1
 
     while True:
-        path = config.TRAINING_LOG_DIR / f"{prefix}_{today}_{idx}.jsonl"
+        path = config.TRAINING_LOG_DIR / f"{prefix}_{today}_{idx}.csv"
 
         if not path.exists():
             return path

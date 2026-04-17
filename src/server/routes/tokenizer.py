@@ -15,7 +15,6 @@ tokenizer = load_tokenizer()
 
 @view_router.get("/")
 def index():
-    print("hmm")
     return FileResponse(config.WEB_DIR / "tokenizer.html")
 
 
