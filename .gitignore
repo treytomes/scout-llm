@@ -2,8 +2,9 @@
 __pycache__
 *.parquet
 data/checkpoints/**/*
-data/training_log/**/*
 data/datasets/**/*
+data/training_log/**/*
+data/training_monitor/**/*
 !data/datasets/datasets.json
 hf_cache
-
+.claude/
