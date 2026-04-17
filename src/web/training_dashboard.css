@@ -1,1 +1,64 @@
 @import url("./styles.css");
+
+.db { padding: 1rem 0; font-family: var(--font-sans); }
+
+.metrics {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:1.5rem;
+}
+
+.metric {
+  background:var(--panel);
+  border-radius:6px;
+  padding:0.875rem 1rem;
+}
+
+.metric-label {font-size:12px;color:var(--muted);margin:0 0 4px;}
+.metric-value {font-size:22px;font-weight:500;margin:0;}
+.metric-sub {font-size:11px;color:var(--muted);margin-top:4px;}
+
+.table-container {
+  border:1px solid var(--border);
+  border-radius:6px;
+  overflow:auto;
+  background:var(--panel);
+  margin-bottom:1rem;
+}
+
+.chart-wrap {
+  position:relative;
+  width:100%;
+  height:300px;
+  margin-bottom:1.5rem;
+}
+
+.chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.legend {
+  display:flex;
+  gap:16px;
+  margin-bottom:8px;
+}
+
+.legend-item {font-size:12px;color:var(--muted);}
+
+.legend-dot {
+  width:10px;
+  height:10px;
+  border-radius:2px;
+  display:inline-block;
+  margin-right:4px;
+}
+
+.empty-state {
+  text-align:center;
+  padding:1rem;
+  color:var(--muted);
+  font-size:13px;
+}
