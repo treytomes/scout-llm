@@ -32,6 +32,7 @@ Output format:
 """
 
 import json
+import os
 import sys
 import time
 import random
@@ -39,12 +40,16 @@ from pathlib import Path
 from datetime import datetime, timezone
 from datasets import load_from_disk
 import boto3
+from dotenv import load_dotenv
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 from rich.console import Console
 
 # Import token checker
 sys.path.insert(0, str(Path(__file__).parent / "monitoring"))
 from check_aws_token import check_token_expiration
+
+load_dotenv(Path(__file__).parent.parent / ".env")
+AWS_PROFILE = os.getenv("AWS_PROFILE", "digital-dev")
 
 console = Console()
 
@@ -163,7 +168,7 @@ def generate_corpus(
     temp_distribution=(0.7, 0.85, 1.0),
     temp_weights=(0.3, 0.4, 0.3),
     skip_existing=True,
-    profile_name="default"
+    profile_name=AWS_PROFILE
 ):
     """Generate dialogue corpus from TinyStories dataset.
 
@@ -270,7 +275,7 @@ if __name__ == "__main__":
                        help="Output directory for generated dialogues")
     parser.add_argument("--num-stories", "-n", type=int, default=1000,
                        help="Number of stories to process")
-    parser.add_argument("--profile", "-p", default="default",
+    parser.add_argument("--profile", "-p", default=AWS_PROFILE,
                        help="AWS profile name for Bedrock access")
     parser.add_argument("--no-skip", action="store_true",
                        help="Regenerate existing dialogues")

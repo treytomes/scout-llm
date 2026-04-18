@@ -5,7 +5,9 @@ datasets
 fastapi
 pandas
 pytest==8.4.2
+python-dotenv
 rich
+sagemaker>=2.0,<3.0
 torch
 transformers
 typer

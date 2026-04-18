@@ -7,13 +7,19 @@ Checks:
 - Dialogue generation progress (if running)
 """
 
+import os
 import sys
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
+AWS_PROFILE = os.getenv("AWS_PROFILE", "digital-dev")
+
 from check_aws_token import check_token_expiration
+from check_aws_costs import get_costs
 
 
 def check_training_status():
@@ -79,20 +85,39 @@ def main():
         print(f"   Progress: {dialogue['generated']}/{dialogue['target']} ({dialogue['percent']:.1f}%)")
 
     # Token status
-    token = check_token_expiration("default", warn_hours=2)
-    print(f"\n🔑 AWS SSO Token:")
+    token = check_token_expiration(AWS_PROFILE, warn_hours=2)
+    print(f"\n🔑 AWS SSO Token ({AWS_PROFILE}):")
 
     if "error" in token:
         print(f"   ⚠️  Could not verify: {token['error']}")
     elif token["expired"]:
-        print(f"   ❌ EXPIRED - Run: aws sso login --profile default")
+        print(f"   ❌ EXPIRED - Run: aws sso login --profile {AWS_PROFILE}")
     elif token["needs_refresh"]:
         hours = token["hours_remaining"]
         print(f"   ⚠️  Expires in {hours:.1f} hours")
-        print(f"   Consider refreshing soon")
+        print(f"   Consider refreshing: aws sso login --profile {AWS_PROFILE}")
     else:
         hours = token["hours_remaining"]
         print(f"   ✓ Valid for {hours:.1f} hours")
+
+    # AWS costs
+    from datetime import date, timedelta
+    try:
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        costs = get_costs(AWS_PROFILE, yesterday, today + timedelta(days=1))
+
+        print(f"\n💰 AWS Costs ({AWS_PROFILE}):")
+        for day in sorted(costs.keys()):
+            day_total = sum(costs[day].values())
+            label = "today    " if day == today.isoformat() else "yesterday"
+            details = "  ".join(
+                f"{s.replace('Amazon ', '')}: ${v:.2f}"
+                for s, v in costs[day].items() if v > 0
+            )
+            print(f"   {label} ({day}): ${day_total:.2f}" + (f"  ({details})" if details else ""))
+    except Exception as e:
+        print(f"\n💰 AWS Costs: Could not fetch ({e})")
 
     print("\n" + "="*70 + "\n")
 

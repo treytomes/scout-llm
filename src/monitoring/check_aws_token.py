@@ -16,40 +16,60 @@ import argparse
 
 
 def find_sso_cache_file(profile_name="default"):
-    """Find the most recent SSO cache file for the given profile."""
+    """Find the most recent SSO cache file for the given profile.
+
+    Handles both legacy (sso_start_url in profile) and new-style
+    (sso_session reference) AWS config formats.
+    """
     config_path = Path.home() / ".aws" / "config"
 
     if not config_path.exists():
         return None
 
-    # Read AWS config to get SSO start URL
     config_text = config_path.read_text()
-    sso_start_url = None
+    lines = config_text.splitlines()
 
-    in_profile = False
-    for line in config_text.splitlines():
-        if f"[profile {profile_name}]" in line or (profile_name == "default" and "[default]" in line):
-            in_profile = True
-        elif line.strip().startswith("["):
-            in_profile = False
-        elif in_profile and "sso_start_url" in line:
-            sso_start_url = line.split("=")[1].strip()
-            break
+    # Parse all sections into a dict: section_header -> {key: value}
+    sections = {}
+    current_section = None
+    for line in lines:
+        line = line.strip()
+        if line.startswith("["):
+            current_section = line.strip("[]")
+            sections[current_section] = {}
+        elif "=" in line and current_section is not None:
+            key, _, value = line.partition("=")
+            sections[current_section][key.strip()] = value.strip()
+
+    # Find the profile section
+    profile_key = f"profile {profile_name}" if profile_name != "default" else "default"
+    profile = sections.get(profile_key, {})
+
+    # Get sso_start_url — either directly or via sso_session reference
+    sso_start_url = profile.get("sso_start_url")
+    if not sso_start_url:
+        session_name = profile.get("sso_session")
+        if session_name:
+            session = sections.get(f"sso-session {session_name}", {})
+            sso_start_url = session.get("sso_start_url")
 
     if not sso_start_url:
         return None
 
-    # Find cache file
+    # Find the cache file whose startUrl matches
     cache_dir = Path.home() / ".aws" / "sso" / "cache"
     if not cache_dir.exists():
         return None
 
-    # Get most recently modified cache file
-    cache_files = list(cache_dir.glob("*.json"))
-    if not cache_files:
-        return None
+    for cache_file in sorted(cache_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(cache_file.read_text())
+            if data.get("startUrl", "").rstrip("/") == sso_start_url.rstrip("/"):
+                return cache_file
+        except Exception:
+            continue
 
-    return max(cache_files, key=lambda p: p.stat().st_mtime)
+    return None
 
 
 def check_token_expiration(profile_name="default", warn_hours=2):
