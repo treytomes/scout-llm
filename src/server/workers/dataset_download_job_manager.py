@@ -26,7 +26,7 @@ class DatasetDownloadJobManager:
         data = self.repo.get_dataset(name)
         job = self.jobs.get(name)
 
-        return DatasetJobStatus(name, data.exists(), job)
+        return DatasetJobStatus(name, data.is_downloaded(), data.is_normalized(), data.is_tokenized(), job)
 
 
     def start_download(self, name: str) -> None:

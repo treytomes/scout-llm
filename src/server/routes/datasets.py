@@ -47,17 +47,16 @@ def delete_dataset(name: str):
     return {"status": "ok"}
 
 
-@api_router.post("/{name}/transform")
-def transform_dataset(dataset_name: str):
-    try:
-        data = repo.list_datasets()
-        data = repo.get_dataset(dataset_name)
-        if not data.is_normalized():
-            repo.normalize_dataset(dataset_name)
-            data = repo.get_dataset(dataset_name)
-        return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@api_router.post("/{name}/normalize")
+def normalize_dataset(name: str):
+    import threading
+    def _run():
+        try:
+            repo.normalize_dataset(name)
+        except Exception as e:
+            print(f"Normalization error for {name}: {e}")
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started"}
 
 
 @api_router.get("/{name}/preview")
@@ -133,7 +132,7 @@ def training_plan(name: str, req: TrainingPlanRequest):
         vocab_size = tokenizer.vocab_size
         seq_len = req.block_size
 
-        samples = max(0, total_tokens - seq_len - 1)
+        samples = max(0, total_tokens // seq_len)
         tokens_per_step = seq_len * req.batch_size
         steps_per_epoch = total_tokens / tokens_per_step
 

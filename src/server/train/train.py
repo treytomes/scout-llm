@@ -178,6 +178,10 @@ def run_training(
     model_config: dict,
     batch_size: int,
     max_steps: int,
+    lr: float = None,
+    min_lr: float = None,
+    warmup_steps: int = None,
+    reset_optimizer: bool = False,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Device: %s", device)
@@ -280,9 +284,13 @@ def run_training(
     # Optimizer
     # --------------------------------------------------
 
+    effective_lr = lr if lr is not None else config.LEARNING_RATE
+    effective_min_lr = min_lr if min_lr is not None else config.MIN_LR
+    effective_warmup = warmup_steps if warmup_steps is not None else config.WARMUP_STEPS
+
     optimizer = AdamW(
         model.parameters(),
-        lr=config.LEARNING_RATE,
+        lr=effective_lr,
         weight_decay=0.1,
         betas=(0.9, 0.95),
     )
@@ -294,21 +302,34 @@ def run_training(
     scheduler = build_scheduler(
         optimizer,
         total_steps=max_steps,
-        warmup_steps=config.WARMUP_STEPS,
-        min_lr=config.MIN_LR,
+        warmup_steps=effective_warmup,
+        min_lr=effective_min_lr,
     )
 
     # --------------------------------------------------
     # Resume checkpoint
     # --------------------------------------------------
 
-    start_step = try_resume_checkpoint(
-        model,
-        optimizer,
-        scheduler,
-        checkpoint_dir,
-        device,
-    )
+    if reset_optimizer:
+        # Load model weights only — discard optimizer/scheduler state.
+        # Use this when fine-tuning from a checkpoint trained on a different
+        # corpus so stale momentum doesn't interfere with the new signal.
+        latest = Path(checkpoint_dir) / "latest.pt"
+        if latest.exists():
+            logger.info("Loading model weights only (--reset-optimizer): %s", latest)
+            load_checkpoint(latest, model, device)
+            start_step = 0
+        else:
+            logger.info("No checkpoint found — starting fresh.")
+            start_step = 0
+    else:
+        start_step = try_resume_checkpoint(
+            model,
+            optimizer,
+            scheduler,
+            checkpoint_dir,
+            device,
+        )
 
     model = torch.compile(model)
     model.train()

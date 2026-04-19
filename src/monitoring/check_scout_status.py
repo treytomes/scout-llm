@@ -25,10 +25,11 @@ from check_aws_costs import get_costs
 def check_training_status():
     """Get latest training metrics."""
     project_root = Path(__file__).parent.parent.parent
-    log_file = project_root / "data/training_log/training_2026-04-17_2.csv"
-
-    if not log_file.exists():
+    log_dir = project_root / "data/training_log"
+    logs = sorted(log_dir.glob("training_*.csv"))
+    if not logs:
         return None
+    log_file = logs[-1]
 
     # Read last line
     lines = log_file.read_text().strip().split('\n')

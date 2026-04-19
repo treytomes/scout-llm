@@ -71,6 +71,13 @@ def download_dataset_from_s3_to_path(bucket, local_path, dataset_name="TinyStori
 
     print(f"   Downloaded {file_count} files to {local_path}")
 
+    # If dataset_dict.json is missing (S3 data predates DatasetDict save), create it
+    dict_json = local_path / "dataset_dict.json"
+    if not dict_json.exists() and (local_path / "train").exists():
+        import json as _json
+        dict_json.write_text(_json.dumps({"splits": ["train"]}))
+        print("   Created dataset_dict.json (missing from S3 cache)")
+
 
 def upload_dataset_to_s3(local_path, bucket, dataset_name="TinyStories"):
     """Upload tokenized dataset to S3 for future runs."""

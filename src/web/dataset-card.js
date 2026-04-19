@@ -6,33 +6,31 @@ class DatasetCard extends HTMLElement {
       <div class="dataset-card">
         <h3>${this.datasetName}</h3>
         <div class="status">Checking...</div>
-
         <progress value="0" max="100" style="width:100%"></progress>
-
+        <div class="pipeline-status" style="font-size:0.85em; color:#888; margin: 4px 0 8px;"></div>
         <div class="controls">
           <button class="download">Download</button>
+          <button class="normalize secondary" style="display:none">Normalize</button>
           <button class="preview secondary">Preview</button>
           <button class="delete danger">Delete</button>
         </div>
       </div>
     `;
 
-    this.statusEl = this.querySelector(".status");
-    this.progressEl = this.querySelector("progress");
+    this.statusEl        = this.querySelector(".status");
+    this.progressEl      = this.querySelector("progress");
+    this.pipelineEl      = this.querySelector(".pipeline-status");
+    this.downloadButton  = this.querySelector(".download");
+    this.normalizeButton = this.querySelector(".normalize");
+    this.previewButton   = this.querySelector(".preview");
+    this.deleteButton    = this.querySelector(".delete");
 
-    this.downloadButton = this.querySelector(".download");
-    this.previewButton = this.querySelector(".preview");
-    this.deleteButton = this.querySelector(".delete");
-
-    this.downloadButton
-        .addEventListener("click", () => this.startDownload());
-
-    this.previewButton.addEventListener("click", () => {
+    this.downloadButton.addEventListener("click",  () => this.startDownload());
+    this.normalizeButton.addEventListener("click", () => this.startNormalize());
+    this.previewButton.addEventListener("click",   () => {
       window.location.href = `/datasets/preview?name=${encodeURIComponent(this.datasetName)}`;
     });
-
-    this.deleteButton
-        .addEventListener("click", () => this.deleteDataset());
+    this.deleteButton.addEventListener("click", () => this.deleteDataset());
 
     this.refreshStatus();
   }
@@ -41,58 +39,86 @@ class DatasetCard extends HTMLElement {
     const res = await fetch(`/api/datasets/${this.datasetName}/status`);
     const data = await res.json();
 
-    if (data.downloaded) {
-      this.statusEl.textContent = "Downloaded";
-      this.progressEl.value = 100;
+    const downloaded = data.downloaded ?? data.exists ?? false;
+    const normalized = data.normalized ?? false;
+    const tokenized  = data.tokenized  ?? false;
 
-      this.downloadButton.disabled = true;
-      this.deleteButton.disabled = false;
-    } else if (data.downloading) {
+    const steps = [
+      downloaded ? "raw ✓" : "raw ✗",
+      normalized ? "normalized ✓" : "normalized ✗",
+      tokenized  ? "tokenized ✓"  : "tokenized ✗",
+    ];
+    this.pipelineEl.textContent = steps.join("  →  ");
+
+    if (data.downloading) {
       this.statusEl.textContent = "Downloading...";
-
-      this.downloadButton.disabled = true;
-      this.deleteButton.disabled = true;
-
+      this.downloadButton.disabled  = true;
+      this.normalizeButton.style.display = "none";
+      this.deleteButton.disabled    = true;
       this.trackProgress();
-    } else {
-      this.statusEl.textContent = "Not downloaded";
-      this.progressEl.value = 0;
-
-      this.downloadButton.disabled = false;
-      this.deleteButton.disabled = true;
+      return;
     }
 
-    this.previewBtn.disabled = !data.downloaded;
+    if (downloaded) {
+      this.statusEl.textContent    = normalized ? "Ready" : "Downloaded — needs normalization";
+      this.progressEl.value        = 100;
+      this.downloadButton.disabled = true;
+      this.deleteButton.disabled   = false;
+      this.normalizeButton.style.display = normalized ? "none" : "inline-block";
+      this.normalizeButton.disabled = false;
+    } else {
+      this.statusEl.textContent    = "Not downloaded";
+      this.progressEl.value        = 0;
+      this.downloadButton.disabled = false;
+      this.deleteButton.disabled   = true;
+      this.normalizeButton.style.display = "none";
+    }
+
+    this.previewButton.disabled = !downloaded;
   }
 
   async startDownload() {
     this.downloadButton.disabled = true;
-    this.deleteButton.disabled = true;
-    
-    await fetch(`/api/datasets/${this.datasetName}/download`, {
-      method: "POST"
-    });
-
+    this.deleteButton.disabled   = true;
+    await fetch(`/api/datasets/${this.datasetName}/download`, { method: "POST" });
     this.statusEl.textContent = "Starting download...";
     this.trackProgress();
   }
 
+  async startNormalize() {
+    this.normalizeButton.disabled = true;
+    this.statusEl.textContent = "Normalizing...";
+    await fetch(`/api/datasets/${this.datasetName}/normalize`, { method: "POST" });
+    this.pollNormalize();
+  }
+
+  pollNormalize() {
+    if (this.normalizeTimer) return;
+    this.normalizeTimer = setInterval(async () => {
+      const res  = await fetch(`/api/datasets/${this.datasetName}/status`);
+      const data = await res.json();
+      if (data.normalized) {
+        clearInterval(this.normalizeTimer);
+        this.normalizeTimer = null;
+        this.refreshStatus();
+      }
+    }, 1500);
+  }
+
   async trackProgress() {
     if (this.progressTimer) return;
-
     this.progressTimer = setInterval(async () => {
       try {
-        const res = await fetch(`/api/datasets/${this.datasetName}/progress`);
+        const res  = await fetch(`/api/datasets/${this.datasetName}/progress`);
         const data = await res.json();
 
         const downloaded = Number(data.downloaded_bytes ?? 0);
-        const total = Number(data.total_bytes);
+        const total      = Number(data.total_bytes);
 
         if (Number.isFinite(total) && total > 0) {
           const percent = (downloaded / total) * 100;
-
           if (Number.isFinite(percent)) {
-            this.progressEl.value = percent;
+            this.progressEl.value     = percent;
             this.statusEl.textContent = `Downloading ${percent.toFixed(1)}%`;
           }
         } else {
@@ -102,26 +128,21 @@ class DatasetCard extends HTMLElement {
         if (data.complete) {
           clearInterval(this.progressTimer);
           this.progressTimer = null;
-
-          this.progressEl.value = 100;
-          this.statusEl.textContent = "Downloaded";
-          this.previewBtn.disabled = false;
+          this.refreshStatus();
         }
-
       } catch (err) {
         console.error("Progress update failed", err);
       }
-
     }, 1000);
   }
 
   async deleteDataset() {
-    await fetch(`/api/datasets/${this.datasetName}`, {
-      method: "DELETE"
-    });
-
-    this.progressEl.value = 0;
-    this.statusEl.textContent = "Deleted";
+    await fetch(`/api/datasets/${this.datasetName}`, { method: "DELETE" });
+    this.progressEl.value        = 0;
+    this.statusEl.textContent    = "Deleted";
+    this.normalizeButton.style.display = "none";
+    this.downloadButton.disabled = false;
+    this.deleteButton.disabled   = true;
   }
 }
 

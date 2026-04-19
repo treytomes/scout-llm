@@ -71,7 +71,7 @@ BATCH_SIZE = 8
 #
 
 # The expected length of the context window before the model begins hallucinating.
-BLOCK_SIZE = 512
+BLOCK_SIZE = 1024
 
 
 # ──────────────────────────────────────────────────────────────────────────────

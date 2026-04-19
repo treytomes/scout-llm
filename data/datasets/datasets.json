@@ -3,6 +3,9 @@
     "hf_path": "roneneldan/TinyStories",
     "normalizer": "TinyStoriesNormalizer"
   },
+  "tinystories_dialogue": {
+    "normalizer": "TinyStoriesDialogueNormalizer"
+  },
   "WildChat-50M": {
     "hf_path": "allenai/WildChat",
     "normalizer": "WildChatNormalizer"

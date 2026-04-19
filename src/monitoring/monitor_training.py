@@ -19,13 +19,15 @@ from model.loader import load_model
 from cli_repl import stream_generate
 
 
-# Test prompts designed for TinyStories evaluation
+# Test prompts designed for Phase 0b dialogue evaluation.
+# Each gives Scout a [Trey] opener and expects a [Scout] response
+# in her characteristic voice: first-person, noticing, wondering.
 TEST_PROMPTS = [
-    "Once upon a time, there was a little",
-    "The boy found a strange",
-    "She looked up and saw",
-    "One day, a tiny bird",
-    "In the forest, something was",
+    "[Trey] What did you notice about the story?\n\n[Scout]",
+    "[Trey] That part where she decided to share — what did you make of that?\n\n[Scout]",
+    "[Trey] Is there anything in the story that stayed with you?\n\n[Scout]",
+    "[Trey] Do you think she made the right choice?\n\n[Scout]",
+    "[Trey] What do you think she was feeling at the end?\n\n[Scout]",
 ]
 
 
@@ -132,51 +134,49 @@ def probe_checkpoint(checkpoint_path, prompt, max_tokens=100):
 
 def evaluate_response(prompt, response):
     """
-    Evaluate response quality.
-    Returns dict with quality signals.
+    Evaluate response quality for Phase 0b dialogue probes.
+    Checks for first-person voice, Scout register, and dialogue coherence.
     """
     issues = []
 
-    # Check for empty or very short response
     if len(response) < 10:
         issues.append("too_short")
 
-    # Check for repetition (same word 3+ times in a row)
     words = response.lower().split()
+
+    # Repetition: same word 3+ times consecutively
     for i in range(len(words) - 2):
         if words[i] == words[i+1] == words[i+2]:
             issues.append("repetitive")
             break
 
-    # Check for generic patterns (exact match common TinyStories phrases)
-    generic_phrases = [
-        "once upon a time",
-        "they played together",
-        "they were happy",
-        "the end",
-        "and they lived happily",
-    ]
     response_lower = response.lower()
-    if any(phrase in response_lower for phrase in generic_phrases):
-        # Not necessarily bad, but flag it
-        pass  # We'll track frequency across probes
 
-    # Check for structural coherence (has subject-verb structure)
-    has_verb = any(word in response.lower() for word in ['was', 'were', 'is', 'are', 'went', 'saw', 'found', 'looked'])
-    if not has_verb:
-        issues.append("no_verb")
+    # Narrative drift: TinyStories prior reasserting itself
+    narrative_phrases = ["once upon a time", "the end", "lived happily", "he ran to", "she ran to"]
+    if any(p in response_lower for p in narrative_phrases):
+        issues.append("narrative_drift")
 
-    # Check if it attends to prompt (shares words with prompt)
-    prompt_words = set(prompt.lower().split())
-    response_words = set(response.lower().split())
-    overlap = len(prompt_words & response_words)
+    # First-person voice: Scout should speak as "I"
+    first_person = any(w in words for w in ["i", "i'm", "i've", "i'd", "i'll", "me", "my", "myself"])
+    if not first_person:
+        issues.append("no_first_person")
+
+    # Speaker marker bleed: model should not reproduce [Trey] in the response
+    if "[trey]" in response_lower:
+        issues.append("speaker_bleed")
+
+    # Noticing language: words that signal Scout's characteristic attention
+    noticing_words = ["notice", "noticed", "feel", "felt", "think", "thought", "wonder",
+                      "wondering", "something", "keep", "stays", "stayed", "interesting"]
+    has_noticing = any(w in response_lower for w in noticing_words)
 
     return {
         "length": len(response),
         "word_count": len(words),
         "issues": issues,
-        "prompt_overlap": overlap,
-        "has_structure": has_verb,
+        "first_person": first_person,
+        "has_noticing_language": has_noticing,
         "response": response,
     }
 

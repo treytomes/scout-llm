@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Scout — Chat</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/chat.css">
+</head>
+<body>
+
+<div class="chat-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Scout</h1>
+      <button id="newConvBtn">+ New conversation</button>
+    </div>
+    <div class="conversation-list" id="convList">
+    </div>
+  </aside>
+
+  <main class="chat-panel" id="chatPanel">
+    <div class="no-conversation" id="noConversation">
+      Select or start a conversation.
+    </div>
+  </main>
+
+</div>
+
+<script type="module" src="/static/chat.js"></script>
+</body>
+</html>

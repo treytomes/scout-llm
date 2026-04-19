@@ -28,7 +28,7 @@ class DatasetRepository:
             data = json.load(f)
             result = []
             for key in data.keys():
-                result.append(DatasetInfo(key, data[key]["hf_path"], data[key]["normalizer"]))
+                result.append(DatasetInfo(key, data[key].get("hf_path"), data[key]["normalizer"]))
             return result
             
 
