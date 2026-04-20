@@ -182,6 +182,7 @@ def run_training(
     min_lr: float = None,
     warmup_steps: int = None,
     reset_optimizer: bool = False,
+    stop_flag: list = None,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info("Device: %s", device)
@@ -346,7 +347,7 @@ def run_training(
     # Training loop
     # --------------------------------------------------
 
-    while step < max_steps:
+    while step < max_steps and not (stop_flag and stop_flag[0]):
         try:
             batch = next(data_iter)
         except StopIteration:

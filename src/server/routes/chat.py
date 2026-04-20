@@ -11,9 +11,10 @@ from chat.conversation_store import (
     create_conversation,
     get_conversation,
     append_message,
+    rename_conversation,
     delete_conversation,
 )
-from .models.chat_models import ChatMessageRequest
+from .models.chat_models import ChatMessageRequest, RenameConversationRequest
 
 api_router = APIRouter(prefix="/api/chat")
 view_router = APIRouter(prefix="/chat")
@@ -127,6 +128,14 @@ def get_conversation_detail(conversation_id: str):
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
+
+
+@api_router.patch("/conversations/{conversation_id}")
+def rename_conversation_endpoint(conversation_id: str, req: RenameConversationRequest):
+    conv = rename_conversation(conversation_id, req.title)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"id": conv["id"], "title": conv["title"]}
 
 
 @api_router.delete("/conversations/{conversation_id}")

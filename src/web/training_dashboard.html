@@ -15,22 +15,21 @@
 
   <div class="db">
 
-  <p class="section-label">Available training logs</p>
-
-  <div class="table-container">
-    <table>
-      <thead>
-        <tr>
-          <th>File</th>
-          <th>Date</th>
-          <th>Index</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="trainingLogsBody">
-        <tr><td colspan="4" class="empty-state">Loading logs…</td></tr>
-      </tbody>
-    </table>
+  <!-- ── Training control ── -->
+  <div class="training-control" id="trainingControl">
+    <div class="training-status-row">
+      <span class="training-indicator" id="trainingIndicator"></span>
+      <span class="training-status-text" id="trainingStatusText">Checking...</span>
+      <div class="training-actions">
+        <button id="startBtn">Start Training</button>
+        <button id="stopBtn" class="secondary" style="display:none">Stop</button>
+      </div>
+    </div>
+    <div id="trainingProgressWrap" style="display:none">
+      <progress id="trainingProgress" value="0" max="100" style="width:100%; margin-top:8px;"></progress>
+      <div class="training-progress-label" id="trainingProgressLabel"></div>
+    </div>
+    <div id="trainingError" class="training-error" style="display:none"></div>
   </div>
 
   <div class="metrics">
@@ -63,6 +62,24 @@
 
   <div class="chart-wrap">
     <canvas id="lossChart"></canvas>
+  </div>
+
+  <p class="section-label">Available training logs</p>
+
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Date</th>
+          <th>Index</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="trainingLogsBody">
+        <tr><td colspan="4" class="empty-state">Loading logs…</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <p class="section-label">Training log data</p>

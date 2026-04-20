@@ -58,13 +58,8 @@ class TrainingJobManager:
 
 
     def stop(self):
-        """
-        Soft stop, specifically.
-
-        Safe stop would require run_training() to periodically check a stop flag (cancellation token?).
-        """
-
         if not self.job:
             return
-        logger.warning("Stopping training job not yet implemented safely.")
+        logger.info("Stopping training job.")
+        self.job.stop()
 

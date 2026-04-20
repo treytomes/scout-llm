@@ -1,9 +1,9 @@
 # routes/training.py
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 import config
-from train.models.training_log_entry import TrainingLogEntry
 from train.training_job_manager import TrainingJobManager
 from train.training_log_repository import TrainingLogRepository
 
@@ -15,41 +15,36 @@ training_manager = TrainingJobManager()
 log_repo = TrainingLogRepository()
 
 
+class StartTrainingRequest(BaseModel):
+    dataset_name: str = "TinyStories"
+    batch_size: int = 8
+    max_steps: int = 1000
+
+
 @view_router.get("/")
 def index():
     return FileResponse(config.WEB_DIR / "training_dashboard.html")
 
 
-@api_router.get("/start")
-def start_training():
+@api_router.post("/start")
+def start_training(req: StartTrainingRequest):
+    if training_manager.job and training_manager.job.running:
+        raise HTTPException(status_code=409, detail="Training already running")
     training_manager.start_training(
-        dataset_name="TinyStories",
+        dataset_name=req.dataset_name,
         model_config=config.MODEL_TINYSTORIES,
-        batch_size=8,
-        max_steps=1000,
-    )
-
-    return {"status": "started"}
-
-
-@api_router.get("/status")
-def training_status():
-    return training_manager.status()
-
-
-# --------------------------------------------------
-# Training job control
-# --------------------------------------------------
-
-@api_router.get("/start")
-def start_training():
-    training_manager.start_training(
-        dataset_name="TinyStories",
-        model_config=config.MODEL_TINYSTORIES,
-        batch_size=8,
-        max_steps=1000,
+        batch_size=req.batch_size,
+        max_steps=req.max_steps,
     )
     return {"status": "started"}
+
+
+@api_router.post("/stop")
+def stop_training():
+    if not training_manager.job or not training_manager.job.running:
+        raise HTTPException(status_code=409, detail="No training job running")
+    training_manager.stop()
+    return {"status": "stopping"}
 
 
 @api_router.get("/status")
@@ -64,7 +59,6 @@ def training_status():
 @api_router.get("/logs")
 def list_training_logs():
     logs = log_repo.list_logs()
-
     return [
         {
             "filename": log.filename,
@@ -110,7 +104,5 @@ def delete_training_log(filename: str):
         raise HTTPException(status_code=404, detail="Training log not found")
 
     log = log_repo.load(path)
-
     log_repo.delete(log)
-
     return {"status": "deleted"}

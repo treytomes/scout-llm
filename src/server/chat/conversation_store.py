@@ -80,6 +80,16 @@ def append_message(conversation_id: str, role: str, content: str) -> dict:
     return message
 
 
+def rename_conversation(conversation_id: str, title: str) -> dict | None:
+    conv = get_conversation(conversation_id)
+    if conv is None:
+        return None
+    conv["title"] = title.strip() or "Untitled"
+    conv["updated_at"] = _now()
+    _conv_path(conversation_id).write_text(json.dumps(conv, indent=2), encoding="utf-8")
+    return conv
+
+
 def delete_conversation(conversation_id: str) -> bool:
     path = _conv_path(conversation_id)
     if path.exists():

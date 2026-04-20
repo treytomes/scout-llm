@@ -27,6 +27,14 @@ async function apiDeleteConversation(id) {
     await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
 }
 
+async function apiRenameConversation(id, title) {
+    await fetch(`/api/chat/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+    });
+}
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 async function refreshSidebar() {
@@ -42,6 +50,27 @@ async function refreshSidebar() {
         const title = document.createElement("span");
         title.className = "conv-title";
         title.textContent = conv.title;
+        title.title = "Double-click to rename";
+        title.addEventListener("dblclick", (e) => {
+            e.stopPropagation();
+            const input = document.createElement("input");
+            input.className = "conv-title-input";
+            input.value = conv.title;
+            title.replaceWith(input);
+            input.focus();
+            input.select();
+
+            const commit = async () => {
+                const newTitle = input.value.trim() || conv.title;
+                await apiRenameConversation(conv.id, newTitle);
+                refreshSidebar();
+            };
+            input.addEventListener("blur", commit);
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter")  { input.blur(); }
+                if (e.key === "Escape") { input.value = conv.title; input.blur(); }
+            });
+        });
 
         const meta = document.createElement("span");
         meta.className = "conv-meta";

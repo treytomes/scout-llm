@@ -113,6 +113,19 @@ body {
   color: #dc3545;
 }
 
+.conv-title-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 1px 6px;
+  outline: none;
+}
+
 /* ── Chat panel ── */
 
 .chat-panel {

@@ -11,6 +11,7 @@ class DatasetCard extends HTMLElement {
         <div class="controls">
           <button class="download">Download</button>
           <button class="normalize secondary" style="display:none">Normalize</button>
+          <button class="tokenize secondary" style="display:none">Tokenize</button>
           <button class="preview secondary">Preview</button>
           <button class="delete danger">Delete</button>
         </div>
@@ -22,11 +23,13 @@ class DatasetCard extends HTMLElement {
     this.pipelineEl      = this.querySelector(".pipeline-status");
     this.downloadButton  = this.querySelector(".download");
     this.normalizeButton = this.querySelector(".normalize");
+    this.tokenizeButton  = this.querySelector(".tokenize");
     this.previewButton   = this.querySelector(".preview");
     this.deleteButton    = this.querySelector(".delete");
 
     this.downloadButton.addEventListener("click",  () => this.startDownload());
     this.normalizeButton.addEventListener("click", () => this.startNormalize());
+    this.tokenizeButton.addEventListener("click",  () => this.startTokenize());
     this.previewButton.addEventListener("click",   () => {
       window.location.href = `/datasets/preview?name=${encodeURIComponent(this.datasetName)}`;
     });
@@ -36,21 +39,16 @@ class DatasetCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this.progressTimer) {
-      clearInterval(this.progressTimer);
-      this.progressTimer = null;
-    }
-    if (this.normalizeTimer) {
-      clearInterval(this.normalizeTimer);
-      this.normalizeTimer = null;
-    }
+    if (this.progressTimer)  { clearInterval(this.progressTimer);  this.progressTimer  = null; }
+    if (this.normalizeTimer) { clearInterval(this.normalizeTimer); this.normalizeTimer = null; }
+    if (this.tokenizeTimer)  { clearInterval(this.tokenizeTimer);  this.tokenizeTimer  = null; }
   }
 
   async refreshStatus() {
     const res = await fetch(`/api/datasets/${this.datasetName}/status`);
     const data = await res.json();
 
-    const downloaded = data.downloaded ?? data.exists ?? false;
+    const downloaded = data.downloaded ?? false;
     const normalized = data.normalized ?? false;
     const tokenized  = data.tokenized  ?? false;
 
@@ -63,26 +61,41 @@ class DatasetCard extends HTMLElement {
 
     if (data.downloading) {
       this.statusEl.textContent = "Downloading...";
-      this.downloadButton.disabled  = true;
+      this.downloadButton.disabled = true;
       this.normalizeButton.style.display = "none";
-      this.deleteButton.disabled    = true;
+      this.tokenizeButton.style.display  = "none";
+      this.deleteButton.disabled = true;
       this.trackProgress();
       return;
     }
 
     if (downloaded) {
-      this.statusEl.textContent    = normalized ? "Ready" : "Downloaded — needs normalization";
-      this.progressEl.value        = 100;
       this.downloadButton.disabled = true;
       this.deleteButton.disabled   = false;
-      this.normalizeButton.style.display = normalized ? "none" : "inline-block";
-      this.normalizeButton.disabled = false;
+
+      if (!normalized) {
+        this.statusEl.textContent = "Downloaded — needs normalization";
+        this.normalizeButton.style.display = "inline-block";
+        this.normalizeButton.disabled = false;
+        this.tokenizeButton.style.display = "none";
+      } else if (!tokenized) {
+        this.statusEl.textContent = "Normalized — needs tokenization";
+        this.normalizeButton.style.display = "none";
+        this.tokenizeButton.style.display  = "inline-block";
+        this.tokenizeButton.disabled = false;
+      } else {
+        this.statusEl.textContent = "Ready";
+        this.normalizeButton.style.display = "none";
+        this.tokenizeButton.style.display  = "none";
+      }
+      this.progressEl.value = 100;
     } else {
-      this.statusEl.textContent    = "Not downloaded";
-      this.progressEl.value        = 0;
+      this.statusEl.textContent = "Not downloaded";
+      this.progressEl.value     = 0;
       this.downloadButton.disabled = false;
       this.deleteButton.disabled   = true;
       this.normalizeButton.style.display = "none";
+      this.tokenizeButton.style.display  = "none";
     }
 
     this.previewButton.disabled = !downloaded;
@@ -93,6 +106,7 @@ class DatasetCard extends HTMLElement {
     this.deleteButton.disabled   = true;
     this.normalizeButton.style.display = "none";
     this.normalizeButton.disabled = true;
+    this.tokenizeButton.style.display  = "none";
     let res;
     try {
       res = await fetch(`/api/datasets/${this.datasetName}/download`, { method: "POST" });
@@ -120,6 +134,13 @@ class DatasetCard extends HTMLElement {
     this.pollNormalize();
   }
 
+  async startTokenize() {
+    this.tokenizeButton.disabled = true;
+    this.statusEl.textContent = "Tokenizing...";
+    await fetch(`/api/datasets/${this.datasetName}/tokenize`, { method: "POST" });
+    this.pollTokenize();
+  }
+
   pollNormalize() {
     if (this.normalizeTimer) return;
     this.normalizeTimer = setInterval(async () => {
@@ -129,6 +150,23 @@ class DatasetCard extends HTMLElement {
         clearInterval(this.normalizeTimer);
         this.normalizeTimer = null;
         this.refreshStatus();
+      } else {
+        this.statusEl.textContent = "Normalizing...";
+      }
+    }, 1500);
+  }
+
+  pollTokenize() {
+    if (this.tokenizeTimer) return;
+    this.tokenizeTimer = setInterval(async () => {
+      const res  = await fetch(`/api/datasets/${this.datasetName}/status`);
+      const data = await res.json();
+      if (data.tokenized) {
+        clearInterval(this.tokenizeTimer);
+        this.tokenizeTimer = null;
+        this.refreshStatus();
+      } else {
+        this.statusEl.textContent = "Tokenizing...";
       }
     }, 1500);
   }
@@ -180,11 +218,13 @@ class DatasetCard extends HTMLElement {
       this.deleteButton.disabled = false;
       return;
     }
-    if (this.progressTimer) { clearInterval(this.progressTimer); this.progressTimer = null; }
+    if (this.progressTimer)  { clearInterval(this.progressTimer);  this.progressTimer  = null; }
     if (this.normalizeTimer) { clearInterval(this.normalizeTimer); this.normalizeTimer = null; }
+    if (this.tokenizeTimer)  { clearInterval(this.tokenizeTimer);  this.tokenizeTimer  = null; }
     this.progressEl.value        = 0;
     this.statusEl.textContent    = "Deleted";
     this.normalizeButton.style.display = "none";
+    this.tokenizeButton.style.display  = "none";
     this.downloadButton.disabled = false;
     this.pipelineEl.textContent  = "";
   }

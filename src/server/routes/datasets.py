@@ -55,6 +55,20 @@ def delete_dataset(name: str):
     return {"status": "ok"}
 
 
+@api_router.post("/{name}/tokenize")
+def tokenize_dataset(name: str):
+    import threading
+
+    def _run():
+        try:
+            repo.get_dataset(name).tokenize()
+        except Exception as e:
+            print(f"Tokenization error for {name!r}: {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started"}
+
+
 @api_router.post("/{name}/normalize")
 def normalize_dataset(name: str):
     import threading

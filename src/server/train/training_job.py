@@ -40,6 +40,7 @@ class TrainingJob(threading.Thread):
         self.metrics_history = []
 
         self.start_time = None
+        self._stop_flag = [False]
 
 
     def run(self):
@@ -58,6 +59,7 @@ class TrainingJob(threading.Thread):
                 model_config=self.model_config,
                 batch_size=self.batch_size,
                 max_steps=self.max_steps,
+                stop_flag=self._stop_flag,
             ):
                 self.latest_metrics = metrics
                 self.metrics_history.append(metrics)
@@ -73,6 +75,9 @@ class TrainingJob(threading.Thread):
             logger.info("Training job finished")
 
 
+    def stop(self):
+        self._stop_flag[0] = True
+
     def status(self):
         """
         Return status snapshot suitable for API responses.
@@ -83,6 +88,7 @@ class TrainingJob(threading.Thread):
             "completed": self.completed,
             "error": self.error,
             "dataset": self.dataset_name,
+            "max_steps": self.max_steps,
             "latest_metrics": self.latest_metrics,
             "elapsed": (
                 time.time() - self.start_time
