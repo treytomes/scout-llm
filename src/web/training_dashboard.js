@@ -111,4 +111,6 @@ function renderChart(rows) {
     });
 }
 
-loadTrainingLogs();
+document.addEventListener("DOMContentLoaded", () => {
+    loadTrainingLogs();
+});
