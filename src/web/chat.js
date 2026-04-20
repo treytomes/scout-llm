@@ -241,4 +241,12 @@ document.getElementById("newConvBtn").addEventListener("click", async () => {
     document.getElementById("msgInput").focus();
 });
 
-refreshSidebar();
+// Deep-link: /chat/?conversation=<id>
+const params = new URLSearchParams(window.location.search);
+const deepLinkId = params.get("conversation");
+if (deepLinkId) {
+    await refreshSidebar();
+    await loadConversation(deepLinkId);
+} else {
+    refreshSidebar();
+}

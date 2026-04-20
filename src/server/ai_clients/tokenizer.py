@@ -1,20 +1,16 @@
 # ai_clients/tokenizer.py
 
 import logging
-from transformers import (
-    AutoTokenizer,
-    TokenizersBackend, 
-    SentencePieceBackend,
-)
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 import config
 
 
 logger = logging.getLogger(config.LOGGER_NAME)
-_tokenizer: TokenizersBackend | SentencePieceBackend | None = None
+_tokenizer: PreTrainedTokenizerBase | None = None
 
 
-def load_tokenizer() -> TokenizersBackend | SentencePieceBackend:
+def load_tokenizer() -> PreTrainedTokenizerBase:
     global _tokenizer
     if _tokenizer is None:
         logger.info("Loading tokenizer: %s", config.TOKENIZER_NAME)
