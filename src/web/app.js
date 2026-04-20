@@ -1,19 +1,4 @@
-async function callHello() {
-    const res = await fetch("/api/hello");
-    const data = await res.json();
-    show(data);
-}
-
-async function checkStatus() {
-    const res = await fetch("/api/status");
-    const data = await res.json();
-    show(data);
-}
-
-function show(data) {
-    document.getElementById("output").textContent =
-        JSON.stringify(data, null, 2);
-}
+import { insertNav } from "./nav.js";
 
 async function loadDatasets() {
     const res = await fetch("/api/datasets");
@@ -29,14 +14,7 @@ async function loadDatasets() {
     }
 }
 
-function tokenizerTest() {
-    window.location.href = '/tokenizer';
-}
-
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("helloButton").addEventListener("click", callHello);
-    document.getElementById("statusButton").addEventListener("click", checkStatus);
-    document.getElementById("tokenizerButton").addEventListener("click", tokenizerTest);
-
+    insertNav();
     loadDatasets();
 });

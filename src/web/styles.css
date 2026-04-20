@@ -75,6 +75,42 @@ textarea:disabled {
   cursor: not-allowed;
 }
 
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  margin: -32px -32px 28px -32px;
+}
+
+.site-nav a {
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.site-nav a:hover {
+  color: var(--text);
+  background: var(--border);
+}
+
+.site-nav a.active {
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.site-nav .nav-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 8px;
+  font-size: 14px;
+}
+
 .toolbar {
   display: inline-flex;
   align-items: stretch;

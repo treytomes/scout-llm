@@ -94,14 +94,15 @@ function renderAlignment(text, tokens, offsets) {
     }
 }
 
+import { insertNav } from "./nav.js";
+
+import { insertNav } from "./nav.js";
+
 document.addEventListener("DOMContentLoaded", () => {
+    insertNav();
     loadInfo();
 
-    document.getElementById("homeButton").onclick= () => {
-        window.location.href = '/';
-    }
-
-    document.getElementById("tokenizeButton").onclick= () => {
+    document.getElementById("tokenizeButton").onclick = () => {
         tokenize();
     }
 });

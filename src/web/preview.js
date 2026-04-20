@@ -1,3 +1,5 @@
+import { insertNav } from "./nav.js";
+
 const params = new URLSearchParams(window.location.search);
 const datasetName = params.get("name");
 
@@ -160,6 +162,8 @@ async function generatePlan() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  insertNav();
+
   document.getElementById("firstBtn").onclick = () => {
     page = 0;
     loadPage();
@@ -179,10 +183,6 @@ document.addEventListener("DOMContentLoaded", () => {
     page = lastPage();
     loadPage();
   };
-
-  document.getElementById("homeButton").onclick= () => {
-    window.location.href = '/';
-  }
 
   document.getElementById("planBtn").onclick = generatePlan;
   

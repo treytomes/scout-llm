@@ -1,3 +1,7 @@
+import { insertNav } from "./nav.js";
+
+insertNav();
+
 let activeConversationId = null;
 let isStreaming = false;
 

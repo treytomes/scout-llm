@@ -7,10 +7,15 @@ body {
   overflow: hidden;
 }
 
+.site-nav {
+  margin: 0;
+  flex-shrink: 0;
+}
+
 .chat-layout {
   display: flex;
   flex: 1;
-  height: 100vh;
+  min-height: 0;
   overflow: hidden;
 }
 
