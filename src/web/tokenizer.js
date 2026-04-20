@@ -1,3 +1,5 @@
+import { insertNav } from "./nav.js";
+
 async function loadInfo() {
     const res = await fetch("/api/tokenizer/info");
     const data = await res.json();
@@ -93,10 +95,6 @@ function renderAlignment(text, tokens, offsets) {
         container.appendChild(span);
     }
 }
-
-import { insertNav } from "./nav.js";
-
-import { insertNav } from "./nav.js";
 
 document.addEventListener("DOMContentLoaded", () => {
     insertNav();
