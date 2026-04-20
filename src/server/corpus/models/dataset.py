@@ -66,6 +66,11 @@ class Dataset:
     
 
     def _normalize_dataset(self, data: datasets.Dataset, normalizer: IDatasetNormalizer) -> datasets.Dataset:
+        # Allow normalizers that need full-dataset access to override the pipeline
+        result = normalizer.normalize_dataset(data)
+        if result is not None:
+            return result
+
         data = data.filter(normalizer.filter)
         data = data.map(
             normalizer.map,

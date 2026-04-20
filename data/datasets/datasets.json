@@ -9,5 +9,13 @@
   "WildChat-50M": {
     "hf_path": "allenai/WildChat",
     "normalizer": "WildChatNormalizer"
+  },
+  "DailyDialog": {
+    "hf_path": "benjaminbeilharz/better_daily_dialog",
+    "normalizer": "DailyDialogNormalizer"
+  },
+  "SODA": {
+    "hf_path": "allenai/soda",
+    "normalizer": "SodaNormalizer"
   }
 }
