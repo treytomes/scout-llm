@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-import config as config
+import config
 from .models.dataset_preview import DatasetPreview
 from .models.training_plan_request import TrainingPlanRequest
 from ai_clients.tokenizer import load_tokenizer
@@ -12,7 +12,7 @@ from workers.dataset_download_job_manager import DatasetDownloadJobManager
 api_router = APIRouter(prefix="/api/datasets")
 view_router = APIRouter(prefix="/datasets")
 job_manager = DatasetDownloadJobManager()
-repo = DatasetRepository();
+repo = DatasetRepository()
 
 
 @view_router.get("/preview")
@@ -32,7 +32,12 @@ def dataset_status(name: str):
 
 @api_router.post("/{name}/download")
 def start_download(name: str):
-    job_manager.start_download(name)
+    try:
+        job_manager.start_download(name)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown dataset: {name!r}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "started"}
 
 
@@ -43,18 +48,23 @@ def dataset_progress(name: str):
 
 @api_router.delete("/{name}")
 def delete_dataset(name: str):
-    job_manager.delete(name)
+    try:
+        job_manager.delete(name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     return {"status": "ok"}
 
 
 @api_router.post("/{name}/normalize")
 def normalize_dataset(name: str):
     import threading
+
     def _run():
         try:
             repo.normalize_dataset(name)
         except Exception as e:
-            print(f"Normalization error for {name}: {e}")
+            print(f"Normalization error for {name!r}: {e}")
+
     threading.Thread(target=_run, daemon=True).start()
     return {"status": "started"}
 
@@ -70,11 +80,19 @@ def preview_dataset(
     try:
         model = repo.get_dataset(name)
         if not model.exists():
-            raise Exception("Dataset not downloaded.")
+            raise HTTPException(status_code=404, detail="Dataset not downloaded.")
         total_rows = model.get_total_rows(is_raw, split_name)
         rows = model.get_rows(is_raw, split_name, limit, page)
-
-        return DatasetPreview(name, split_name, page, limit, total_rows, rows)
+        return DatasetPreview(
+            name=name,
+            split_name=split_name,
+            page=page,
+            limit=limit,
+            total_rows=total_rows,
+            rows=rows,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -84,69 +102,45 @@ def training_plan(name: str, req: TrainingPlanRequest):
     try:
         model = repo.get_dataset(name)
         if not model.exists():
-            raise Exception("Dataset not downloaded.")
+            raise HTTPException(status_code=404, detail="Dataset not downloaded.")
 
         tokenizer = load_tokenizer()
         dataset = model.get_normalized(req.split_name)
 
-        BATCH_SIZE = 100_000  # number of chunks per tokenizer call
-
-        batch = []
         total_tokens = 0
-        n = 0
-        total = len(dataset)
-
-        print("Beginning token counting.")
+        batch: list[str] = []
+        BATCH_SIZE = 100_000
 
         for row in dataset:
             chunk = row.get("chunk", "")
             if not chunk:
                 continue
-
             batch.append(chunk)
-
-            if len(batch) > BATCH_SIZE:
-                enc = tokenizer(
-                    batch,
-                    add_special_tokens=False,
-                    padding=False,
-                    truncation=False,
-                )
+            if len(batch) >= BATCH_SIZE:
+                enc = tokenizer(batch, add_special_tokens=False, padding=False, truncation=False)
                 total_tokens += sum(len(ids) for ids in enc["input_ids"])
                 batch = []
-                print(f"Processed {n}/{total}")
-
-            n += 1
 
         if batch:
-            enc = tokenizer(
-                batch,
-                add_special_tokens=False,
-                padding=False,
-                truncation=False,
-            )
+            enc = tokenizer(batch, add_special_tokens=False, padding=False, truncation=False)
             total_tokens += sum(len(ids) for ids in enc["input_ids"])
 
-        print("Done.")
-
-        vocab_size = tokenizer.vocab_size
-        seq_len = req.block_size
-
-        samples = max(0, total_tokens // seq_len)
-        tokens_per_step = seq_len * req.batch_size
-        steps_per_epoch = total_tokens / tokens_per_step
+        tokens_per_step = req.block_size * req.batch_size
+        steps_per_epoch = total_tokens / tokens_per_step if tokens_per_step > 0 else 0
 
         return {
             "dataset": name,
             "split": req.split_name,
             "total_tokens": total_tokens,
-            "vocab_size": vocab_size,
-            "sequence_length": seq_len,
+            "vocab_size": tokenizer.vocab_size,
+            "sequence_length": req.block_size,
             "batch_size": req.batch_size,
             "tokens_per_step": tokens_per_step,
-            "training_samples": samples,
+            "training_samples": max(0, total_tokens // req.block_size),
             "steps_per_epoch": steps_per_epoch,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

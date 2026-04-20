@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Self
 
 
 class DatasetStatus:
@@ -10,7 +9,7 @@ class DatasetStatus:
     normalized: bool
     tokenized: bool
 
-    def __init__(self, name, path) -> Self:
+    def __init__(self, name: str, path: Path) -> None:
         self.name = name
         self.path = path
         self.exists = path.exists()

@@ -7,54 +7,44 @@ from .models.dataset_job_status import DatasetJobStatus
 
 
 class DatasetDownloadJobManager:
-    """
-    Manages dataset download jobs.
-    """
-
-    jobs: list[DatasetDownloadJob]
-    repo: DatasetRepository = DatasetRepository()
+    """Manages dataset download and normalization jobs."""
 
     def __init__(self):
-        self.jobs = {}
-            
+        self.jobs: dict[str, DatasetDownloadJob] = {}
+        self.repo = DatasetRepository()
 
-    def dataset_path(self, name) -> Path:
+    def dataset_path(self, name: str) -> Path:
         return config.DATASETS_PATH / name / "transformed"
-    
 
     def job_status(self, name: str) -> DatasetJobStatus:
         data = self.repo.get_dataset(name)
         job = self.jobs.get(name)
-
-        return DatasetJobStatus(name, data.is_downloaded(), data.is_normalized(), data.is_tokenized(), job)
-
+        return DatasetJobStatus.from_job(
+            name,
+            data.is_downloaded(),
+            data.is_normalized(),
+            data.is_tokenized(),
+            job,
+        )
 
     def start_download(self, name: str) -> None:
-        datasets = self.load_datasets()
+        info = self.repo.load_dataset_info(name)  # raises KeyError if unknown
 
-        if name not in datasets:
-            raise ValueError("Unknown dataset")
+        if not info.hf_path:
+            raise ValueError(f"Dataset {name!r} has no hf_path and cannot be downloaded")
 
         if name in self.jobs and self.jobs[name].running:
             return
 
         job = DatasetDownloadJob(
             name=name,
-            hf_dataset=datasets[name]["hf_path"],
-            normalizer_name=datasets[name]["normalizer"]
+            hf_dataset=info.hf_path,
+            normalizer_name=info.normalizer,
         )
-
         self.jobs[name] = job
         job.start()
 
-
     def delete(self, name: str) -> None:
-        """
-        Delete both the job and the underlying dataset.
-        """
-
-        data = self.repo.get_dataset(name)
-        data.delete()
-
-        if name in self.jobs:
-            del self.jobs[name]
+        """Delete both the job and the underlying dataset files."""
+        self.repo.get_dataset(name).delete()
+        self.jobs.pop(name, None)

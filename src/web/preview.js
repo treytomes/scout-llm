@@ -1,17 +1,25 @@
 const params = new URLSearchParams(window.location.search);
 const datasetName = params.get("name");
-console.log(params);
 
 let page = 0;
 let limit = 20;
 let totalRows = 0;
 
 async function loadPage() {
-  const res = await fetch(
-    `/api/datasets/${datasetName}/preview?limit=${limit}&page=${page}`
-  );
-
-  const data = await res.json();
+  let res, data;
+  try {
+    res = await fetch(
+      `/api/datasets/${datasetName}/preview?limit=${limit}&page=${page}`
+    );
+    data = await res.json();
+  } catch (err) {
+    document.getElementById("metaDataset").textContent = `Error loading page: ${err.message}`;
+    return;
+  }
+  if (!res.ok) {
+    document.getElementById("metaDataset").textContent = `Error ${res.status}: ${data?.detail ?? res.statusText}`;
+    return;
+  }
 
   totalRows = data.total_rows;
 
@@ -73,7 +81,9 @@ function renderTable(rows) {
 
     for (const c of columns) {
       const td = document.createElement("td");
-      td.textContent = JSON.stringify(row[c]);
+      const raw = JSON.stringify(row[c]);
+      td.textContent = raw.length > 300 ? raw.slice(0, 300) + "…" : raw;
+      td.title = raw.length > 300 ? raw : "";
       tr.appendChild(td);
     }
 
@@ -84,7 +94,7 @@ function renderTable(rows) {
 }
 
 function lastPage() {
-  return Math.floor(totalRows / limit);
+  return Math.max(0, Math.ceil(totalRows / limit) - 1);
 }
 
 function formatNumber(n) {
@@ -130,16 +140,22 @@ async function generatePlan() {
   const blockSize = Number(document.getElementById("blockSizeInput").value);
   const batchSize = Number(document.getElementById("batchSizeInput").value);
 
-  const res = await fetch(`/api/datasets/${datasetName}/training_plan`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      block_size: blockSize,
-      batch_size: batchSize
-    })
-  });
-
-  const data = await res.json();
+  let res, data;
+  try {
+    res = await fetch(`/api/datasets/${datasetName}/training_plan`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ block_size: blockSize, batch_size: batchSize })
+    });
+    data = await res.json();
+  } catch (err) {
+    alert(`Training plan failed: ${err.message}`);
+    return;
+  }
+  if (!res.ok) {
+    alert(`Training plan error ${res.status}: ${data?.detail ?? res.statusText}`);
+    return;
+  }
   renderPlanTable(data);
 }
 
@@ -155,7 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   document.getElementById("nextBtn").onclick = () => {
-    page++;
+    if (page < lastPage()) page++;
     loadPage();
   };
 

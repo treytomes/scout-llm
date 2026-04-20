@@ -19,7 +19,7 @@ class Dataset:
     path: Path
 
 
-    def __init__(self, name: str) -> Self:
+    def __init__(self, name: str) -> None:
         self.name = name
         self.path = self._root / name
         self._path_raw = self.path / "raw"
@@ -174,7 +174,7 @@ class Dataset:
 
     def get_tokenized(self, split_name: str = "train") -> datasets.Dataset:
         if not self._path_tokenized.exists():
-            raise FileExistsError("Dataset has not been normalized.")
+            raise FileNotFoundError("Dataset has not been tokenized.")
         data = datasets.load_from_disk(self._path_tokenized)
         if isinstance(data, datasets.Dataset):
             return data
@@ -186,10 +186,7 @@ class Dataset:
     def get_rows(self, is_raw: bool, split_name: str, limit: int, page: int) -> list[dict]:
         data = self.get_raw(split_name) if is_raw else self.get_normalized(split_name)
         start = page * limit
-        end = start + limit
-        total = len(data)
-
-        rows = []
-        for i in range(start, min(end, total)):
-            rows.append(data[i])
-        return rows
+        end = min(start + limit, len(data))
+        if start >= len(data):
+            return []
+        return [dict(data[i]) for i in range(start, end)]

@@ -35,6 +35,17 @@ class DatasetCard extends HTMLElement {
     this.refreshStatus();
   }
 
+  disconnectedCallback() {
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer);
+      this.progressTimer = null;
+    }
+    if (this.normalizeTimer) {
+      clearInterval(this.normalizeTimer);
+      this.normalizeTimer = null;
+    }
+  }
+
   async refreshStatus() {
     const res = await fetch(`/api/datasets/${this.datasetName}/status`);
     const data = await res.json();
@@ -80,7 +91,24 @@ class DatasetCard extends HTMLElement {
   async startDownload() {
     this.downloadButton.disabled = true;
     this.deleteButton.disabled   = true;
-    await fetch(`/api/datasets/${this.datasetName}/download`, { method: "POST" });
+    this.normalizeButton.style.display = "none";
+    this.normalizeButton.disabled = true;
+    let res;
+    try {
+      res = await fetch(`/api/datasets/${this.datasetName}/download`, { method: "POST" });
+    } catch (err) {
+      this.statusEl.textContent = `Download failed: ${err.message}`;
+      this.downloadButton.disabled = false;
+      this.deleteButton.disabled = false;
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      this.statusEl.textContent = `Download error ${res.status}: ${body?.detail ?? res.statusText}`;
+      this.downloadButton.disabled = false;
+      this.deleteButton.disabled = false;
+      return;
+    }
     this.statusEl.textContent = "Starting download...";
     this.trackProgress();
   }
@@ -137,12 +165,28 @@ class DatasetCard extends HTMLElement {
   }
 
   async deleteDataset() {
-    await fetch(`/api/datasets/${this.datasetName}`, { method: "DELETE" });
+    this.deleteButton.disabled = true;
+    let res;
+    try {
+      res = await fetch(`/api/datasets/${this.datasetName}`, { method: "DELETE" });
+    } catch (err) {
+      this.statusEl.textContent = `Delete failed: ${err.message}`;
+      this.deleteButton.disabled = false;
+      return;
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      this.statusEl.textContent = `Delete error ${res.status}: ${body?.detail ?? res.statusText}`;
+      this.deleteButton.disabled = false;
+      return;
+    }
+    if (this.progressTimer) { clearInterval(this.progressTimer); this.progressTimer = null; }
+    if (this.normalizeTimer) { clearInterval(this.normalizeTimer); this.normalizeTimer = null; }
     this.progressEl.value        = 0;
     this.statusEl.textContent    = "Deleted";
     this.normalizeButton.style.display = "none";
     this.downloadButton.disabled = false;
-    this.deleteButton.disabled   = true;
+    this.pipelineEl.textContent  = "";
   }
 }
 
