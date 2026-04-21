@@ -11,6 +11,7 @@ class DatasetCard extends HTMLElement {
         <div class="controls">
           <button class="download">Download</button>
           <button class="normalize secondary" style="display:none">Normalize</button>
+          <button class="renormalize secondary" style="display:none">Re-normalize</button>
           <button class="tokenize secondary" style="display:none">Tokenize</button>
           <button class="preview secondary">Preview</button>
           <button class="delete danger">Delete</button>
@@ -18,18 +19,20 @@ class DatasetCard extends HTMLElement {
       </div>
     `;
 
-    this.statusEl        = this.querySelector(".status");
-    this.progressEl      = this.querySelector("progress");
-    this.pipelineEl      = this.querySelector(".pipeline-status");
-    this.downloadButton  = this.querySelector(".download");
-    this.normalizeButton = this.querySelector(".normalize");
-    this.tokenizeButton  = this.querySelector(".tokenize");
-    this.previewButton   = this.querySelector(".preview");
-    this.deleteButton    = this.querySelector(".delete");
+    this.statusEl          = this.querySelector(".status");
+    this.progressEl        = this.querySelector("progress");
+    this.pipelineEl        = this.querySelector(".pipeline-status");
+    this.downloadButton    = this.querySelector(".download");
+    this.normalizeButton   = this.querySelector(".normalize");
+    this.renormalizeButton = this.querySelector(".renormalize");
+    this.tokenizeButton    = this.querySelector(".tokenize");
+    this.previewButton     = this.querySelector(".preview");
+    this.deleteButton      = this.querySelector(".delete");
 
-    this.downloadButton.addEventListener("click",  () => this.startDownload());
-    this.normalizeButton.addEventListener("click", () => this.startNormalize());
-    this.tokenizeButton.addEventListener("click",  () => this.startTokenize());
+    this.downloadButton.addEventListener("click",    () => this.startDownload());
+    this.normalizeButton.addEventListener("click",   () => this.startNormalize());
+    this.renormalizeButton.addEventListener("click", () => this.startNormalize());
+    this.tokenizeButton.addEventListener("click",    () => this.startTokenize());
     this.previewButton.addEventListener("click",   () => {
       window.location.href = `/datasets/preview?name=${encodeURIComponent(this.datasetName)}`;
     });
@@ -61,10 +64,11 @@ class DatasetCard extends HTMLElement {
 
     if (data.downloading) {
       this.statusEl.textContent = "Downloading...";
-      this.downloadButton.disabled = true;
-      this.normalizeButton.style.display = "none";
-      this.tokenizeButton.style.display  = "none";
-      this.deleteButton.disabled = true;
+      this.downloadButton.disabled         = true;
+      this.normalizeButton.style.display   = "none";
+      this.renormalizeButton.style.display = "none";
+      this.tokenizeButton.style.display    = "none";
+      this.deleteButton.disabled           = true;
       this.trackProgress();
       return;
     }
@@ -75,27 +79,33 @@ class DatasetCard extends HTMLElement {
 
       if (!normalized) {
         this.statusEl.textContent = "Downloaded — needs normalization";
-        this.normalizeButton.style.display = "inline-block";
-        this.normalizeButton.disabled = false;
-        this.tokenizeButton.style.display = "none";
+        this.normalizeButton.style.display   = "inline-block";
+        this.normalizeButton.disabled        = false;
+        this.renormalizeButton.style.display = "none";
+        this.tokenizeButton.style.display    = "none";
       } else if (!tokenized) {
         this.statusEl.textContent = "Normalized — needs tokenization";
-        this.normalizeButton.style.display = "none";
-        this.tokenizeButton.style.display  = "inline-block";
-        this.tokenizeButton.disabled = false;
+        this.normalizeButton.style.display   = "none";
+        this.renormalizeButton.style.display = "inline-block";
+        this.renormalizeButton.disabled      = false;
+        this.tokenizeButton.style.display    = "inline-block";
+        this.tokenizeButton.disabled         = false;
       } else {
         this.statusEl.textContent = "Ready";
-        this.normalizeButton.style.display = "none";
-        this.tokenizeButton.style.display  = "none";
+        this.normalizeButton.style.display   = "none";
+        this.renormalizeButton.style.display = "inline-block";
+        this.renormalizeButton.disabled      = false;
+        this.tokenizeButton.style.display    = "none";
       }
       this.progressEl.value = 100;
     } else {
-      this.statusEl.textContent = "Not downloaded";
-      this.progressEl.value     = 0;
-      this.downloadButton.disabled = false;
-      this.deleteButton.disabled   = true;
-      this.normalizeButton.style.display = "none";
-      this.tokenizeButton.style.display  = "none";
+      this.statusEl.textContent            = "Not downloaded";
+      this.progressEl.value                = 0;
+      this.downloadButton.disabled         = false;
+      this.deleteButton.disabled           = true;
+      this.normalizeButton.style.display   = "none";
+      this.renormalizeButton.style.display = "none";
+      this.tokenizeButton.style.display    = "none";
     }
 
     this.previewButton.disabled = !downloaded;
@@ -128,7 +138,10 @@ class DatasetCard extends HTMLElement {
   }
 
   async startNormalize() {
-    this.normalizeButton.disabled = true;
+    this.normalizeButton.disabled        = true;
+    this.renormalizeButton.disabled      = true;
+    this.renormalizeButton.style.display = "none";
+    this.tokenizeButton.style.display    = "none";
     this.statusEl.textContent = "Normalizing...";
     await fetch(`/api/datasets/${this.datasetName}/normalize`, { method: "POST" });
     this.pollNormalize();

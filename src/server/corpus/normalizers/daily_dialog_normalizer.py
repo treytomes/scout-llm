@@ -2,7 +2,7 @@ import re
 from collections import defaultdict
 import datasets as hf_datasets
 import config
-from .dataset_normalizer import IDatasetNormalizer
+from .dataset_normalizer import IDatasetNormalizer, EOS, fix_pretokenized_spacing, extract_vocative_names
 
 MIN_TURNS = 4
 MAX_WORDS_PER_TURN = 120
@@ -16,7 +16,7 @@ class DailyDialogNormalizer(IDatasetNormalizer):
         convs: dict[int, list[str]] = defaultdict(list)
 
         for row in data:
-            utterance = row.get("utterance", "").strip()
+            utterance = fix_pretokenized_spacing(row.get("utterance", "").strip())
             words = len(utterance.split())
             if words < 3 or words > MAX_WORDS_PER_TURN:
                 continue
@@ -28,13 +28,23 @@ class DailyDialogNormalizer(IDatasetNormalizer):
         for turns in convs.values():
             if len(turns) < MIN_TURNS:
                 continue
+
+            tagged = [
+                (config.USER_NAME if i % 2 == 0 else config.MODEL_NAME, turn)
+                for i, turn in enumerate(turns)
+            ]
+
+            name_map = extract_vocative_names(tagged)
+
             lines = []
-            for i, turn in enumerate(turns):
-                speaker = config.USER_NAME if i % 2 == 0 else config.MODEL_NAME
-                lines.append(f"[{speaker}] {turn}")
+            for tag, text in tagged:
+                for char_name, tag_name in name_map.items():
+                    text = re.sub(rf'\b{re.escape(char_name)}\b', tag_name, text)
+                lines.append(f"[{tag}] {text}")
+
             chunks.append({
                 "source": "DailyDialog",
-                "chunk": "\n".join(lines) + "\n<|endoftext|>",
+                "chunk": "\n".join(lines) + f"\n{EOS}",
             })
 
         return hf_datasets.Dataset.from_list(chunks)

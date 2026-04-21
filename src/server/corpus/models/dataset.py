@@ -71,10 +71,11 @@ class Dataset:
         if result is not None:
             return result
 
-        data = data.filter(normalizer.filter)
+        data = data.filter(normalizer.filter, load_from_cache_file=False)
         data = data.map(
             normalizer.map,
-            remove_columns=data.column_names
+            remove_columns=data.column_names,
+            load_from_cache_file=False,
         )
         return data
     
@@ -88,6 +89,8 @@ class Dataset:
             raise FileExistsError("Raw dataset has not been downloaded.")
         if self._path_normalized.exists():
             shutil.rmtree(self._path_normalized)
+        if self._path_tokenized.exists():
+            shutil.rmtree(self._path_tokenized)
         print("Applying dataset normalization")
 
         data = datasets.load_from_disk(self._path_raw)
@@ -106,13 +109,13 @@ class Dataset:
     def tokenize(self) -> None:
         """
         Tokenize all normalized dataset splits and persist the tokenized dataset.
-        Adds an EOS token to the end of every chunk so the model learns sequence termination.
+        EOS is embedded in the chunk text by normalizers as '</s>', which encodes
+        to the correct token ID — no separate append needed.
         """
         if not self._path_normalized.exists():
             raise FileExistsError("Dataset has not been normalized.")
 
         tokenizer = load_tokenizer()
-        eos_id = tokenizer.eos_token_id
 
         print("Loading normalized dataset")
         data = datasets.load_from_disk(self._path_normalized)
@@ -123,11 +126,6 @@ class Dataset:
                 return {"tokens": []}
 
             tokens = tokenizer.encode(text, add_special_tokens=False)
-
-            # Append EOS token if available
-            if eos_id is not None:
-                tokens.append(eos_id)
-
             return {"tokens": tokens}
 
         print("Tokenizing dataset")

@@ -1,6 +1,6 @@
 import re
 import config
-from .dataset_normalizer import IDatasetNormalizer
+from .dataset_normalizer import IDatasetNormalizer, EOS
 
 # Patterns that indicate the conversation is not useful for conversational grounding
 _REJECT_ANY_RE = re.compile(
@@ -106,7 +106,7 @@ class WildChatNormalizer(IDatasetNormalizer):
             lines.append(f"[{speaker}] {content}")
 
         # Join turns with newlines; add EOS at end of conversation
-        chunk = "\n".join(lines) + f"\n<|endoftext|>"
+        chunk = "\n".join(lines) + f"\n{EOS}"
 
         return {
             "source": "WildChat",
