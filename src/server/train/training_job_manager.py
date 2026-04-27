@@ -26,6 +26,7 @@ class TrainingJobManager:
         model_config: dict,
         batch_size: int,
         max_steps: int,
+        reset_optimizer: bool = False,
     ):
         logger.info("TrainingJobManager.start_training")
         if self.job and self.job.running:
@@ -37,6 +38,7 @@ class TrainingJobManager:
             model_config=model_config,
             batch_size=batch_size,
             max_steps=max_steps,
+            reset_optimizer=reset_optimizer,
         )
         self.job.start()
         logger.info("Training job launched.")

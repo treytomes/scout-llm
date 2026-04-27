@@ -117,25 +117,26 @@ MODEL_TINYSTORIES = {
     "block_size": BLOCK_SIZE,
 }
 
-# Future module configs — sized to their respective corpora and task complexity.
-# Conversational layer: richer structure, more varied vocabulary than TinyStories.
-# Reflective layer: highest representational density — first-person interiority.
-#
-# MODEL_CONVERSATIONAL = {
-#     "dim": 512,
-#     "layer": 8,
-#     "heads": 8,
-#     "mlp_ratio": 3.5,
-#     "block_size": 512,
-#     "dropout": 0.1,
-# }
-#
+# Module 1 — Conversational layer (~20M parameters).
+# Stacks on top of frozen Module 0. Trains on SODA + DailyDialog.
+# 7 layers × ~2.9M params/layer = ~20.3M. Lighter dropout than Module 0
+# because Module 0's frozen representations already provide regularization.
+MODEL_CONVERSATIONAL = {
+    "dim": 512,
+    "layer": 7,
+    "heads": 8,
+    "mlp_ratio": 3.5,
+    "block_size": BLOCK_SIZE,
+    "dropout": 0.1,
+}
+
+# Module 2 — Reflective layer (planned, not yet sized).
 # MODEL_REFLECTIVE = {
 #     "dim": 512,
 #     "layer": 6,
 #     "heads": 8,
 #     "mlp_ratio": 4.0,
-#     "block_size": 512,
+#     "block_size": BLOCK_SIZE,
 #     "dropout": 0.1,
 # }
 

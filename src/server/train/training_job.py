@@ -23,6 +23,7 @@ class TrainingJob(threading.Thread):
         model_config: dict,
         batch_size: int,
         max_steps: int,
+        reset_optimizer: bool = False,
     ):
         super().__init__(daemon=True)
         logger.info("Creating training job.")
@@ -31,6 +32,7 @@ class TrainingJob(threading.Thread):
         self.model_config = model_config
         self.batch_size = batch_size
         self.max_steps = max_steps
+        self.reset_optimizer = reset_optimizer
 
         self.running = False
         self.completed = False
@@ -59,6 +61,7 @@ class TrainingJob(threading.Thread):
                 model_config=self.model_config,
                 batch_size=self.batch_size,
                 max_steps=self.max_steps,
+                reset_optimizer=self.reset_optimizer,
                 stop_flag=self._stop_flag,
             ):
                 self.latest_metrics = metrics

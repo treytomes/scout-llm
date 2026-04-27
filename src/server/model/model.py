@@ -328,7 +328,7 @@ class ScoutModel(nn.Module):
     def max_seq(self):
         return self._max_seq
 
-    def forward(self, idx):
+    def forward(self, idx, skip_modules=None):
         B, T = idx.shape
 
         assert T <= self._max_seq, (
@@ -338,10 +338,13 @@ class ScoutModel(nn.Module):
         # Embed tokens into shared representation space
         x = self.language.embed(idx)
 
-        # Pass through all modules sequentially
-        # Each module refines the representation established by previous ones.
-        # Frozen modules act as deterministic transformations.
-        for module in self.expert_modules:
+        # Pass through all modules sequentially.
+        # skip_modules: optional set of module indices to bypass at inference time.
+        # Skipping module N lets earlier modules' output go directly to the head,
+        # useful for isolating individual developmental layers.
+        for i, module in enumerate(self.expert_modules):
+            if skip_modules and i in skip_modules:
+                continue
             x = module(x)
 
         return self.language.logits(x)

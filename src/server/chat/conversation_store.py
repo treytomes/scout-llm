@@ -63,12 +63,21 @@ def get_conversation(conversation_id: str) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def append_message(conversation_id: str, role: str, content: str) -> dict:
+def append_message(conversation_id: str, role: str, content: str,
+                   checkpoint: str = None, active_modules: list = None,
+                   generation: dict = None) -> dict:
     conv = get_conversation(conversation_id)
     if conv is None:
         raise ValueError(f"Conversation not found: {conversation_id}")
 
     message = {"role": role, "content": content, "timestamp": _now()}
+    if checkpoint:
+        message["checkpoint"] = checkpoint
+    if active_modules is not None:
+        message["active_modules"] = active_modules
+    if generation:
+        message["generation"] = generation
+
     conv["messages"].append(message)
     conv["updated_at"] = _now()
 

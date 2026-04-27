@@ -28,6 +28,7 @@ from corpus.models.packed_chunk_dataset import PackedChunkDataset
 from model.loader import (
     load_checkpoint,
     load_fresh_model,
+    init_model_for_checkpoint,
 )
 from model.model import count_parameters
 
@@ -62,11 +63,27 @@ def build_scheduler(optimizer, total_steps, warmup_steps, min_lr):
 # Checkpointing
 # ─────────────────────────────────────────────────────────────
 
+def _update_checkpoint_metadata(out_dir: Path, filename: str, step: int, cfg: dict):
+    """Write a lightweight sidecar so the chat API can read step/phase without torch.load."""
+    import json
+    meta_path = out_dir / "metadata.json"
+    try:
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    except Exception:
+        meta = {}
+    meta[filename] = {"step": step, "phase": cfg.get("phase", 0),
+                      "block_size": cfg.get("block_size", 0)}
+    meta_path.write_text(json.dumps(meta, indent=2))
+
+
 def save_checkpoint(out_dir, step, model, optimizer, scheduler, cfg):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    ckpt_path = out_dir / f"model_{step}.pt"
+    phase = cfg.get("phase", 0)
+    stem = f"model_p{phase}_{step}" if phase else f"model_{step}"
+
+    ckpt_path = out_dir / f"{stem}.pt"
     latest_path = out_dir / "latest.pt"
 
     checkpoint = {
@@ -79,6 +96,9 @@ def save_checkpoint(out_dir, step, model, optimizer, scheduler, cfg):
 
     torch.save(checkpoint, ckpt_path)
     torch.save(checkpoint, latest_path)
+
+    _update_checkpoint_metadata(out_dir, f"{stem}.pt", step, cfg)
+    _update_checkpoint_metadata(out_dir, "latest.pt", step, cfg)
 
     logger.info("Saved checkpoint: %s", ckpt_path)
 
@@ -174,7 +194,7 @@ def build_log_path(prefix="training"):
 # ─────────────────────────────────────────────────────────────
 
 def run_training(
-    dataset_name: str,
+    dataset_name: "str | list[str]",
     model_config: dict,
     batch_size: int,
     max_steps: int,
@@ -219,45 +239,44 @@ def run_training(
     logger.info("CSV log file ready.")
 
     # --------------------------------------------------
-    # Load dataset
+    # Load dataset(s)
     # --------------------------------------------------
 
+    from torch.utils.data import ConcatDataset
+
     repo = DatasetRepository()
+    dataset_names = [dataset_name] if isinstance(dataset_name, str) else dataset_name
 
-    dataset_model = repo.get_dataset(dataset_name)
-    if not dataset_model.is_tokenized():
-        dataset_model.tokenize()
-    
-    train_dataset = dataset_model.get_tokenized("train")
+    train_parts = []
+    val_parts = []
 
-    val_dataset = None
-    if "validation" in dataset_model.get_split_names():
-        val_dataset = dataset_model.get_tokenized("validation")
+    for name in dataset_names:
+        ds_model = repo.get_dataset(name)
+        if not ds_model.is_tokenized():
+            ds_model.tokenize()
+        train_parts.append(PackedChunkDataset(
+            ds_model.get_tokenized("train"),
+            block_size=model_config["block_size"],
+        ))
+        if "validation" in ds_model.get_split_names():
+            val_parts.append(PackedChunkDataset(
+                ds_model.get_tokenized("validation"),
+                block_size=model_config["block_size"],
+            ))
 
-    logger.info("Begin packing dataset.")
-    train_dataset = PackedChunkDataset(
-        train_dataset,
-        block_size=model_config["block_size"],
-    )
-    logger.info("Done packing dataset.")
+    train_dataset = ConcatDataset(train_parts) if len(train_parts) > 1 else train_parts[0]
+    logger.info("Train dataset: %d blocks across %d source(s)", len(train_dataset), len(train_parts))
 
-    logger.info("Setting up data loader.")
     loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=config.NUM_WORKERS,
     )
-    logger.info("Done setting up data loader.")
 
     val_loader = None
-    if val_dataset is not None:
-
-        val_dataset = PackedChunkDataset(
-            val_dataset,
-            block_size=model_config["block_size"],
-        )
-
+    if val_parts:
+        val_dataset = ConcatDataset(val_parts) if len(val_parts) > 1 else val_parts[0]
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
@@ -271,26 +290,36 @@ def run_training(
     # Model
     # --------------------------------------------------
 
-    model = load_fresh_model(device, model_config)
+    latest = Path(checkpoint_dir) / "latest.pt"
+    if latest.exists():
+        # Match architecture to checkpoint (handles multi-module Phase 1+)
+        model = init_model_for_checkpoint(latest, tokenizer.vocab_size, device, model_config)
+    else:
+        model = load_fresh_model(device, model_config)
 
     param_stats = count_parameters(model)
 
     logger.info(
-        "Model parameters: %d (%fM)",
-        param_stats["total"],
-        param_stats["total"] / 1e6,
+        "Model parameters: %dM total, %dM trainable, %dM frozen",
+        param_stats["total_millions"],
+        param_stats["trainable_millions"],
+        round(param_stats["frozen"] / 1e6, 2),
     )
 
     # --------------------------------------------------
-    # Optimizer
+    # Optimizer — only trainable parameters
     # --------------------------------------------------
 
     effective_lr = lr if lr is not None else config.LEARNING_RATE
     effective_min_lr = min_lr if min_lr is not None else config.MIN_LR
     effective_warmup = warmup_steps if warmup_steps is not None else config.WARMUP_STEPS
 
+    trainable_params = [p for p in model.parameters() if p.requires_grad]
+    if not trainable_params:
+        raise RuntimeError("No trainable parameters found. Did you forget to add a module?")
+
     optimizer = AdamW(
-        model.parameters(),
+        trainable_params,
         lr=effective_lr,
         weight_decay=0.1,
         betas=(0.9, 0.95),
@@ -311,11 +340,20 @@ def run_training(
     # Resume checkpoint
     # --------------------------------------------------
 
+    # Read phase from the checkpoint config so numbered files are namespaced correctly
+    latest = Path(checkpoint_dir) / "latest.pt"
+    if latest.exists():
+        import json as _json
+        _meta_path = Path(checkpoint_dir) / "metadata.json"
+        _meta = _json.loads(_meta_path.read_text()) if _meta_path.exists() else {}
+        ckpt_phase = _meta.get("latest.pt", {}).get("phase", model_config.get("phase", 0))
+    else:
+        ckpt_phase = model_config.get("phase", 0)
+
     if reset_optimizer:
         # Load model weights only — discard optimizer/scheduler state.
         # Use this when fine-tuning from a checkpoint trained on a different
         # corpus so stale momentum doesn't interfere with the new signal.
-        latest = Path(checkpoint_dir) / "latest.pt"
         if latest.exists():
             logger.info("Loading model weights only (--reset-optimizer): %s", latest)
             load_checkpoint(latest, model, device)
@@ -448,6 +486,7 @@ def run_training(
                 {
                     "vocab_size": tokenizer.vocab_size,
                     "block_size": model_config["block_size"],
+                    "phase": ckpt_phase,
                 },
             )
 
@@ -463,5 +502,9 @@ def run_training(
         model,
         optimizer,
         scheduler,
-        {},
+        {
+            "vocab_size": tokenizer.vocab_size,
+            "block_size": model_config["block_size"],
+            "phase": ckpt_phase,
+        },
     )

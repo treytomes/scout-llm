@@ -15,10 +15,18 @@ training_manager = TrainingJobManager()
 log_repo = TrainingLogRepository()
 
 
+_MODEL_CONFIGS = {
+    "tinystories": config.MODEL_TINYSTORIES,
+    "conversational": config.MODEL_CONVERSATIONAL,
+}
+
+
 class StartTrainingRequest(BaseModel):
-    dataset_name: str = "TinyStories"
+    dataset_name: "str | list[str]" = "TinyStories"
     batch_size: int = 8
     max_steps: int = 1000
+    module_config: str = "tinystories"
+    reset_optimizer: bool = False
 
 
 @view_router.get("/")
@@ -30,11 +38,17 @@ def index():
 def start_training(req: StartTrainingRequest):
     if training_manager.job and training_manager.job.running:
         raise HTTPException(status_code=409, detail="Training already running")
+
+    model_cfg = _MODEL_CONFIGS.get(req.module_config)
+    if model_cfg is None:
+        raise HTTPException(status_code=400, detail=f"Unknown module_config: {req.module_config}")
+
     training_manager.start_training(
         dataset_name=req.dataset_name,
-        model_config=config.MODEL_TINYSTORIES,
+        model_config=model_cfg,
         batch_size=req.batch_size,
         max_steps=req.max_steps,
+        reset_optimizer=req.reset_optimizer,
     )
     return {"status": "started"}
 
