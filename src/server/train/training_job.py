@@ -23,7 +23,11 @@ class TrainingJob(threading.Thread):
         model_config: dict,
         batch_size: int,
         max_steps: int,
+        lr: float = None,
+        warmup_steps: int = None,
         reset_optimizer: bool = False,
+        freeze_modules: list = None,
+        freeze_language_core: bool = False,
     ):
         super().__init__(daemon=True)
         logger.info("Creating training job.")
@@ -32,7 +36,11 @@ class TrainingJob(threading.Thread):
         self.model_config = model_config
         self.batch_size = batch_size
         self.max_steps = max_steps
+        self.lr = lr
+        self.warmup_steps = warmup_steps
         self.reset_optimizer = reset_optimizer
+        self.freeze_modules = freeze_modules
+        self.freeze_language_core = freeze_language_core
 
         self.running = False
         self.completed = False
@@ -61,7 +69,11 @@ class TrainingJob(threading.Thread):
                 model_config=self.model_config,
                 batch_size=self.batch_size,
                 max_steps=self.max_steps,
+                lr=self.lr,
+                warmup_steps=self.warmup_steps,
                 reset_optimizer=self.reset_optimizer,
+                freeze_modules=self.freeze_modules,
+                freeze_language_core=self.freeze_language_core,
                 stop_flag=self._stop_flag,
             ):
                 self.latest_metrics = metrics

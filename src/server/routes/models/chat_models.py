@@ -12,10 +12,19 @@ class GenerationParams(BaseModel):
 class ChatMessageRequest(BaseModel):
     conversation_id: str
     message: str
-    checkpoint: Optional[str] = None          # filename e.g. "latest.pt"
-    active_modules: Optional[list[int]] = None  # e.g. [0] to bypass module 1
+    checkpoint: Optional[str] = None
+    active_modules: Optional[list[int]] = None
     generation: Optional[GenerationParams] = None
+    user_name: Optional[str] = None
 
 
 class RenameConversationRequest(BaseModel):
     title: str
+
+
+class EditMessageRequest(BaseModel):
+    content: str
+
+
+class SetStatusRequest(BaseModel):
+    status: str

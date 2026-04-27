@@ -134,3 +134,50 @@
   border-radius: 4px;
   padding: 6px 10px;
 }
+
+/* ── Training start dialog ── */
+
+.training-dialog {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.training-dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.training-dialog-row label {
+  min-width: 140px;
+  color: var(--text-muted, #9aa3ad);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.training-dialog-row input[type="text"],
+.training-dialog-row input[type="number"],
+.training-dialog-row select {
+  flex: 1;
+  max-width: 160px;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.training-dialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.training-dialog-actions button {
+  font-size: 12px;
+  padding: 5px 16px;
+}

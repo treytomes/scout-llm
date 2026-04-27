@@ -11,8 +11,16 @@ from chat.conversation_store import (
     append_message,
     rename_conversation,
     delete_conversation,
+    update_message,
+    set_conversation_status,
 )
-from .models.chat_models import ChatMessageRequest, RenameConversationRequest, GenerationParams
+from .models.chat_models import (
+    ChatMessageRequest, RenameConversationRequest, GenerationParams,
+    EditMessageRequest, SetStatusRequest,
+)
+
+# Active dream cycle jobs keyed by conversation_id
+_dream_jobs: dict = {}
 
 api_router = APIRouter(prefix="/api/chat")
 view_router = APIRouter(prefix="/chat")
@@ -146,7 +154,10 @@ def _get_model_and_tokenizer(checkpoint_filename: str = "latest.pt"):
 def _format_prompt(messages: list[dict]) -> str:
     parts = []
     for msg in messages:
-        speaker = "Trey" if msg["role"] == "user" else "Scout"
+        if msg["role"] == "user":
+            speaker = msg.get("user_name") or "Trey"
+        else:
+            speaker = "Scout"
         parts.append(f"[{speaker}] {msg['content']}")
     parts.append("[Scout]")
     return "\n\n".join(parts)
@@ -282,7 +293,11 @@ def rename_conversation_endpoint(conversation_id: str, req: RenameConversationRe
 
 @api_router.delete("/conversations/{conversation_id}")
 def delete_conversation_endpoint(conversation_id: str):
-    if not delete_conversation(conversation_id):
+    result = delete_conversation(conversation_id)
+    if not result:
+        conv = get_conversation(conversation_id)
+        if conv and conv.get("status") == "locked":
+            raise HTTPException(status_code=403, detail="Conversation is locked")
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"status": "ok"}
 
@@ -292,6 +307,9 @@ def send_message(conversation_id: str, req: ChatMessageRequest):
     conv = get_conversation(conversation_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    status = conv.get("status", "active")
+    if status in ("locked", "training"):
+        raise HTTPException(status_code=403, detail=f"Conversation is {status}")
 
     checkpoint_filename = req.checkpoint or "latest.pt"
 
@@ -315,7 +333,7 @@ def send_message(conversation_id: str, req: ChatMessageRequest):
 
     append_message(conversation_id, "user", req.message,
                    checkpoint=checkpoint_filename, active_modules=active_modules,
-                   generation=generation_log)
+                   generation=generation_log, user_name=req.user_name)
     conv = get_conversation(conversation_id)
 
     prompt = _format_prompt(conv["messages"])
@@ -328,3 +346,62 @@ def send_message(conversation_id: str, req: ChatMessageRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@api_router.patch("/conversations/{conversation_id}/messages/{message_index}")
+def edit_message(conversation_id: str, message_index: int, req: EditMessageRequest):
+    conv = get_conversation(conversation_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if conv.get("status") == "locked":
+        raise HTTPException(status_code=403, detail="Conversation is locked")
+    msg = update_message(conversation_id, message_index, req.content)
+    if msg is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return msg
+
+
+@api_router.patch("/conversations/{conversation_id}/status")
+def set_status(conversation_id: str, req: SetStatusRequest):
+    conv = get_conversation(conversation_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    current = conv.get("status", "active")
+    if current == "locked":
+        raise HTTPException(status_code=403, detail="Conversation is locked")
+    # Only allow manual transitions: active ↔ full
+    if req.status not in ("active", "full"):
+        raise HTTPException(status_code=400, detail="Manual status must be 'active' or 'full'")
+    updated = set_conversation_status(conversation_id, req.status)
+    return {"id": conversation_id, "status": updated.get("status")}
+
+
+@api_router.post("/conversations/{conversation_id}/dream")
+def start_dream_cycle(conversation_id: str):
+    conv = get_conversation(conversation_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    status = conv.get("status", "active")
+    if status == "locked":
+        raise HTTPException(status_code=403, detail="Conversation is already locked")
+    if status == "training":
+        raise HTTPException(status_code=409, detail="Dream cycle already running")
+
+    from train.dream_cycle import DreamCycleJob
+
+    # Mark as training immediately so UI reflects it
+    set_conversation_status(conversation_id, "training")
+
+    job = DreamCycleJob(conversation_id=conversation_id)
+    _dream_jobs[conversation_id] = job
+    job.start()
+
+    return {"status": "started"}
+
+
+@api_router.get("/conversations/{conversation_id}/dream")
+def dream_status(conversation_id: str):
+    job = _dream_jobs.get(conversation_id)
+    if job is None:
+        return {"running": False, "completed": False, "phase": "none", "progress": 0}
+    return job.status()

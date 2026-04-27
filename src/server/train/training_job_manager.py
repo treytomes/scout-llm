@@ -26,7 +26,11 @@ class TrainingJobManager:
         model_config: dict,
         batch_size: int,
         max_steps: int,
+        lr: float = None,
+        warmup_steps: int = None,
         reset_optimizer: bool = False,
+        freeze_modules: list = None,
+        freeze_language_core: bool = False,
     ):
         logger.info("TrainingJobManager.start_training")
         if self.job and self.job.running:
@@ -38,7 +42,11 @@ class TrainingJobManager:
             model_config=model_config,
             batch_size=batch_size,
             max_steps=max_steps,
+            lr=lr,
+            warmup_steps=warmup_steps,
             reset_optimizer=reset_optimizer,
+            freeze_modules=freeze_modules,
+            freeze_language_core=freeze_language_core,
         )
         self.job.start()
         logger.info("Training job launched.")

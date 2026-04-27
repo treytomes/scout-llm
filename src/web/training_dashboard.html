@@ -20,6 +20,60 @@
         <button id="stopBtn" class="secondary" style="display:none">Stop</button>
       </div>
     </div>
+
+    <!-- ── Start training dialog ── -->
+    <div class="training-dialog" id="trainingDialog" style="display:none">
+      <div class="training-dialog-row">
+        <label for="tdDataset">Dataset</label>
+        <input id="tdDataset" type="text" value="scout_dialogue">
+      </div>
+      <div class="training-dialog-row">
+        <label for="tdSteps">Steps</label>
+        <input id="tdSteps" type="number" value="400" min="1">
+      </div>
+      <div class="training-dialog-row">
+        <label for="tdLr">Learning rate</label>
+        <input id="tdLr" type="text" value="5e-5">
+      </div>
+      <div class="training-dialog-row">
+        <label for="tdWarmup">Warmup steps</label>
+        <input id="tdWarmup" type="number" value="50" min="0">
+      </div>
+      <div class="training-dialog-row">
+        <label for="tdBatch">Batch size</label>
+        <input id="tdBatch" type="number" value="8" min="1">
+      </div>
+      <div class="training-dialog-row">
+        <label for="tdModuleConfig">Module config</label>
+        <select id="tdModuleConfig">
+          <option value="tinystories">tinystories</option>
+          <option value="conversational">conversational</option>
+        </select>
+      </div>
+      <div class="training-dialog-row">
+        <label>
+          <input id="tdFreezeModule0" type="checkbox" checked>
+          Freeze module 0 (TinyStories core)
+        </label>
+      </div>
+      <div class="training-dialog-row">
+        <label>
+          <input id="tdFreezeLC" type="checkbox">
+          Freeze language core (embedding + head)
+        </label>
+      </div>
+      <div class="training-dialog-row">
+        <label>
+          <input id="tdResetOptimizer" type="checkbox" checked>
+          Reset optimizer (fresh LR schedule)
+        </label>
+      </div>
+      <div class="training-dialog-actions">
+        <button id="tdConfirmBtn">Start</button>
+        <button id="tdCancelBtn" class="secondary">Cancel</button>
+      </div>
+    </div>
+
     <div id="trainingProgressWrap" style="display:none">
       <progress id="trainingProgress" value="0" max="100" style="width:100%; margin-top:8px;"></progress>
       <div class="training-progress-label" id="trainingProgressLabel"></div>

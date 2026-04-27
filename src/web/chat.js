@@ -3,10 +3,13 @@ import { insertNav } from "./nav.js";
 insertNav();
 
 let activeConversationId = null;
+let activeConversationStatus = "active";
 let isStreaming = false;
 let activeCheckpoint = "latest.pt";
 let generationDefaults = null;
 let generationParams = {};
+let userName = "Trey";
+let dreamPollInterval = null;
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -27,7 +30,8 @@ async function apiGetConversation(id) {
 }
 
 async function apiDeleteConversation(id) {
-    await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+    return res.ok;
 }
 
 async function apiListCheckpoints() {
@@ -48,6 +52,66 @@ async function apiRenameConversation(id, title) {
     });
 }
 
+async function apiEditMessage(conversationId, messageIndex, content) {
+    const res = await fetch(`/api/chat/conversations/${conversationId}/messages/${messageIndex}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+    });
+    return res.ok;
+}
+
+async function apiSetStatus(conversationId, status) {
+    const res = await fetch(`/api/chat/conversations/${conversationId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+    });
+    return res.ok;
+}
+
+async function apiStartDream(conversationId) {
+    const res = await fetch(`/api/chat/conversations/${conversationId}/dream`, {
+        method: "POST",
+    });
+    return res.ok;
+}
+
+async function apiDreamStatus(conversationId) {
+    const res = await fetch(`/api/chat/conversations/${conversationId}/dream`);
+    if (!res.ok) return null;
+    return res.json();
+}
+
+async function apiCountTokens(text) {
+    try {
+        const res = await fetch("/api/tokenizer/tokenize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.token_count;
+    } catch {
+        return null;
+    }
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+
+function statusLabel(status) {
+    return { active: "", full: "Full", training: "Training…", locked: "🔒" }[status] || "";
+}
+
+function isEditable(status) {
+    return status === "active" || status === "full";
+}
+
+function canSend(status) {
+    return status === "active";
+}
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 async function refreshSidebar() {
@@ -56,51 +120,63 @@ async function refreshSidebar() {
     list.innerHTML = "";
 
     for (const conv of convs) {
+        const status = conv.status || "active";
         const item = document.createElement("div");
-        item.className = "conv-item" + (conv.id === activeConversationId ? " active" : "");
+        item.className = "conv-item" +
+            (conv.id === activeConversationId ? " active" : "") +
+            (status !== "active" ? ` conv-${status}` : "");
         item.dataset.id = conv.id;
 
         const title = document.createElement("span");
         title.className = "conv-title";
         title.textContent = conv.title;
-        title.title = "Double-click to rename";
-        title.addEventListener("dblclick", (e) => {
-            e.stopPropagation();
-            const input = document.createElement("input");
-            input.className = "conv-title-input";
-            input.value = conv.title;
-            title.replaceWith(input);
-            input.focus();
-            input.select();
+        title.title = status === "locked" ? "Locked — permanent record" : "Double-click to rename";
 
-            const commit = async () => {
-                const newTitle = input.value.trim() || conv.title;
-                await apiRenameConversation(conv.id, newTitle);
-                refreshSidebar();
-            };
-            input.addEventListener("blur", commit);
-            input.addEventListener("keydown", (e) => {
-                if (e.key === "Enter")  { input.blur(); }
-                if (e.key === "Escape") { input.value = conv.title; input.blur(); }
+        if (status !== "locked") {
+            title.addEventListener("dblclick", (e) => {
+                e.stopPropagation();
+                const input = document.createElement("input");
+                input.className = "conv-title-input";
+                input.value = conv.title;
+                title.replaceWith(input);
+                input.focus();
+                input.select();
+
+                const commit = async () => {
+                    const newTitle = input.value.trim() || conv.title;
+                    await apiRenameConversation(conv.id, newTitle);
+                    refreshSidebar();
+                };
+                input.addEventListener("blur", commit);
+                input.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter")  { input.blur(); }
+                    if (e.key === "Escape") { input.value = conv.title; input.blur(); }
+                });
             });
-        });
+        }
 
         const meta = document.createElement("span");
         meta.className = "conv-meta";
-        meta.textContent = conv.message_count > 0 ? `${conv.message_count}` : "";
+        const badge = statusLabel(status);
+        meta.textContent = badge || (conv.message_count > 0 ? `${conv.message_count}` : "");
 
         const del = document.createElement("button");
         del.className = "conv-delete";
         del.textContent = "×";
-        del.title = "Delete conversation";
+        del.title = status === "locked" ? "Locked — cannot delete" : "Delete conversation";
+        del.disabled = status === "locked";
         del.addEventListener("click", async (e) => {
             e.stopPropagation();
-            await apiDeleteConversation(conv.id);
-            if (activeConversationId === conv.id) {
-                activeConversationId = null;
-                renderNoConversation();
+            if (status === "locked") return;
+            const ok = await apiDeleteConversation(conv.id);
+            if (ok) {
+                if (activeConversationId === conv.id) {
+                    activeConversationId = null;
+                    activeConversationStatus = "active";
+                    renderNoConversation();
+                }
+                refreshSidebar();
             }
-            refreshSidebar();
         });
 
         item.appendChild(title);
@@ -122,31 +198,82 @@ function renderNoConversation() {
     `;
 }
 
-function renderChatPanel() {
+function renderChatPanel(status = "active") {
     const panel = document.getElementById("chatPanel");
+    const locked = status === "locked";
+    const training = status === "training";
+    const full = status === "full";
+    const sendDisabled = !canSend(status);
+
     panel.innerHTML = `
-        <div class="token-bar" id="tokenBar" style="display:none">
-            <span class="token-bar-label">Context</span>
-            <div class="token-bar-track"><div class="token-bar-fill" id="tokenBarFill"></div></div>
-            <span class="token-bar-count" id="tokenBarCount"></span>
+        <div class="chat-header" id="chatHeader">
+            <div class="chat-header-user">
+                <span class="chat-header-label">You are</span>
+                <span class="chat-header-username" id="userNameDisplay" title="Click to change">${escapeHtml(userName)}</span>
+            </div>
+            <div class="token-bar" id="tokenBar" style="display:none">
+                <span class="token-bar-label">Context</span>
+                <div class="token-bar-track"><div class="token-bar-fill" id="tokenBarFill"></div></div>
+                <span class="token-bar-count" id="tokenBarCount"></span>
+            </div>
+            <div class="conv-status-controls" id="convStatusControls">
+                ${locked ? `<span class="conv-status-badge locked">🔒 Locked</span>` : ""}
+                ${training ? `<span class="conv-status-badge training">Training…</span>` : ""}
+                ${full && !training ? `<span class="conv-status-badge full">Full</span>` : ""}
+                ${full && !training && !locked ? `<button class="conv-action-btn dream-btn" id="dreamBtn">Commit to memory</button>` : ""}
+                ${(full || status === "active") && !training && !locked ? `<button class="conv-action-btn mark-full-btn" id="markFullBtn">${full ? "Reopen" : "Mark full"}</button>` : ""}
+            </div>
         </div>
         <div class="messages" id="messages"></div>
+        ${!locked && !training ? `
         <div class="input-area">
-            <textarea id="msgInput" placeholder="Say something to Scout…" rows="1"></textarea>
-            <button id="sendBtn">Send</button>
-        </div>
+            <textarea id="msgInput" placeholder="${sendDisabled ? "Context full — edit messages or commit to memory." : "Say something to Scout…"}" rows="1" ${sendDisabled ? "disabled" : ""}></textarea>
+            <button id="sendBtn" ${sendDisabled ? "disabled" : ""}>Send</button>
+        </div>` : `
+        <div class="input-area input-area-disabled">
+            <span class="input-area-msg">${locked ? "This conversation is locked. It is part of Scout's permanent record." : "Training in progress…"}</span>
+        </div>`}
     `;
+
+    if (!locked) {
+        document.getElementById("userNameDisplay").addEventListener("click", openUsernameEditor);
+    }
+
+    const markFullBtn = document.getElementById("markFullBtn");
+    if (markFullBtn) {
+        markFullBtn.addEventListener("click", async () => {
+            const newStatus = status === "full" ? "active" : "full";
+            const ok = await apiSetStatus(activeConversationId, newStatus);
+            if (ok) {
+                activeConversationStatus = newStatus;
+                await loadConversation(activeConversationId);
+            }
+        });
+    }
+
+    const dreamBtn = document.getElementById("dreamBtn");
+    if (dreamBtn) {
+        dreamBtn.addEventListener("click", async () => {
+            if (!confirm("Commit this conversation to Scout's memory?\n\nThis will run a short training session and then permanently lock the conversation. This cannot be undone.")) return;
+            const ok = await apiStartDream(activeConversationId);
+            if (ok) {
+                activeConversationStatus = "training";
+                await loadConversation(activeConversationId);
+                startDreamPoll(activeConversationId);
+            }
+        });
+    }
+
+    if (!canSend(status)) return;
 
     const input = document.getElementById("msgInput");
     const sendBtn = document.getElementById("sendBtn");
 
-    // Auto-resize textarea
     input.addEventListener("input", () => {
         input.style.height = "auto";
         input.style.height = Math.min(input.scrollHeight, 160) + "px";
     });
 
-    // Send on Enter (Shift+Enter for newline)
     input.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -155,6 +282,120 @@ function renderChatPanel() {
     });
 
     sendBtn.addEventListener("click", sendMessage);
+}
+
+function openDreamModal() {
+    document.getElementById("dreamModalBackdrop").style.display = "flex";
+    document.getElementById("dreamModalLog").innerHTML = "";
+    document.getElementById("dreamModalProgressFill").style.width = "0%";
+    document.getElementById("dreamModalPhase").textContent = "starting";
+    document.getElementById("dreamModalElapsed").textContent = "";
+}
+
+function closeDreamModal() {
+    document.getElementById("dreamModalBackdrop").style.display = "none";
+}
+
+function dreamLog(text) {
+    const log = document.getElementById("dreamModalLog");
+    const line = document.createElement("div");
+    line.className = "dream-log-line";
+    line.textContent = text;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+}
+
+function startDreamPoll(conversationId) {
+    stopDreamPoll();
+    openDreamModal();
+    let lastPhase = null;
+
+    dreamPollInterval = setInterval(async () => {
+        if (conversationId !== activeConversationId) { stopDreamPoll(); return; }
+        const s = await apiDreamStatus(conversationId);
+        if (!s) return;
+
+        // Update progress bar
+        const fill = document.getElementById("dreamModalProgressFill");
+        if (fill) fill.style.width = `${s.progress}%`;
+
+        // Update phase label
+        const phaseEl = document.getElementById("dreamModalPhase");
+        if (phaseEl) phaseEl.textContent = s.phase;
+
+        // Log phase transitions
+        if (s.phase !== lastPhase) {
+            lastPhase = s.phase;
+            if (s.phase === "sft") {
+                dreamLog(`SFT pass — ${s.sft_steps} steps`);
+            } else if (s.phase === "dpo") {
+                dreamLog(`DPO pass — ${s.dpo_steps} steps`);
+            } else if (s.phase === "locking") {
+                dreamLog("Saving checkpoint…");
+            } else if (s.phase === "done") {
+                dreamLog("Complete. Conversation locked.");
+            }
+        }
+
+        // Update elapsed
+        const elapsedEl = document.getElementById("dreamModalElapsed");
+        if (elapsedEl && s.elapsed != null) {
+            const secs = Math.round(s.elapsed);
+            elapsedEl.textContent = secs < 60 ? `${secs}s` : `${Math.floor(secs/60)}m ${secs%60}s`;
+        }
+
+        if (s.error) {
+            dreamLog(`Error: ${s.error}`);
+        }
+
+        if (s.completed) {
+            stopDreamPoll();
+            if (phaseEl) phaseEl.classList.add("done");
+            if (!s.error) {
+                setTimeout(async () => {
+                    closeDreamModal();
+                    await loadConversation(conversationId);
+                    refreshSidebar();
+                }, 1500);
+            }
+        }
+    }, 2000);
+}
+
+function stopDreamPoll() {
+    if (dreamPollInterval) { clearInterval(dreamPollInterval); dreamPollInterval = null; }
+}
+
+function openUsernameEditor() {
+    const display = document.getElementById("userNameDisplay");
+    if (!display) return;
+    const input = document.createElement("input");
+    input.className = "chat-header-username-input";
+    input.value = userName;
+    display.replaceWith(input);
+    input.focus();
+    input.select();
+
+    const commit = () => {
+        const newName = input.value.trim() || userName;
+        userName = newName;
+        const span = document.createElement("span");
+        span.className = "chat-header-username";
+        span.id = "userNameDisplay";
+        span.title = "Click to change";
+        span.textContent = newName;
+        span.addEventListener("click", openUsernameEditor);
+        input.replaceWith(span);
+    };
+    input.addEventListener("blur", commit);
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter")  { input.blur(); }
+        if (e.key === "Escape") { input.value = userName; input.blur(); }
+    });
+}
+
+function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function formatTimestamp(isoString) {
@@ -167,22 +408,26 @@ function formatTimestamp(isoString) {
     }
 }
 
-function appendMessage(role, content, streaming = false, timestamp = null) {
+function appendMessage(role, content, streaming = false, timestamp = null, messageIndex = null, msgUserName = null) {
     const messages = document.getElementById("messages");
 
-    // Remove empty state if present
     const empty = messages.querySelector(".empty-state");
     if (empty) empty.remove();
 
     const msg = document.createElement("div");
     msg.className = `message ${role}`;
+    if (messageIndex !== null) msg.dataset.index = messageIndex;
 
     const meta = document.createElement("div");
     meta.className = "message-meta";
 
     const speaker = document.createElement("span");
     speaker.className = "message-speaker";
-    speaker.textContent = role === "user" ? "Trey" : "Scout";
+    if (role === "user") {
+        speaker.textContent = msgUserName || userName;
+    } else {
+        speaker.textContent = "Scout";
+    }
 
     const ts = document.createElement("span");
     ts.className = "message-timestamp";
@@ -190,6 +435,14 @@ function appendMessage(role, content, streaming = false, timestamp = null) {
 
     meta.appendChild(speaker);
     meta.appendChild(ts);
+
+    if (isEditable(activeConversationStatus)) {
+        const editBtn = document.createElement("button");
+        editBtn.className = "message-edit-btn";
+        editBtn.textContent = "Edit";
+        editBtn.addEventListener("click", () => startEditMessage(msg));
+        meta.appendChild(editBtn);
+    }
 
     const bubble = document.createElement("div");
     bubble.className = "message-bubble" + (streaming ? " streaming" : "");
@@ -203,37 +456,109 @@ function appendMessage(role, content, streaming = false, timestamp = null) {
     return bubble;
 }
 
-const BLOCK_SIZE = 1024;  // must match config.py
+function startEditMessage(msgEl) {
+    const bubble = msgEl.querySelector(".message-bubble");
+    if (!bubble || bubble.querySelector("textarea")) return;
 
-function estimateTokens(messages) {
-    // Rough estimate: characters / 4, plus speaker tags
-    let chars = 0;
-    for (const msg of messages) {
-        chars += (msg.content || "").length + 12; // 12 for [Speaker] + newlines
-    }
-    return Math.round(chars / 4);
+    const originalText = bubble.textContent;
+    const index = parseInt(msgEl.dataset.index, 10);
+
+    msgEl.classList.add("editing");
+    bubble.innerHTML = "";
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "message-edit-textarea";
+    textarea.value = originalText;
+    textarea.rows = Math.max(4, originalText.split("\n").length + 1);
+
+    const actions = document.createElement("div");
+    actions.className = "message-edit-actions";
+
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "Save";
+    saveBtn.className = "message-edit-save";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.className = "message-edit-cancel";
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    bubble.appendChild(textarea);
+    bubble.appendChild(actions);
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+    const cancel = () => {
+        msgEl.classList.remove("editing");
+        bubble.textContent = originalText;
+    };
+
+    cancelBtn.addEventListener("click", cancel);
+
+    saveBtn.addEventListener("click", async () => {
+        const newText = textarea.value.trim();
+        if (!newText) return;
+        msgEl.classList.remove("editing");
+        bubble.textContent = newText;
+        if (!isNaN(index) && activeConversationId) {
+            await apiEditMessage(activeConversationId, index, newText);
+        }
+    });
+
+    textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { cancel(); }
+    });
 }
 
-function updateTokenBar(messages) {
+const BLOCK_SIZE = 1024;
+
+async function updateTokenBar(messages) {
     const bar = document.getElementById("tokenBar");
     const fill = document.getElementById("tokenBarFill");
     const count = document.getElementById("tokenBarCount");
 
-    if (!messages || messages.length === 0) {
-        bar.style.display = "none";
+    if (!bar || !messages || messages.length === 0) {
+        if (bar) bar.style.display = "none";
         return;
     }
 
-    const tokens = estimateTokens(messages);
-    const pct = Math.min(tokens / BLOCK_SIZE, 1.0);
+    const promptParts = [];
+    for (const msg of messages) {
+        const speaker = msg.role === "user" ? (msg.user_name || "Trey") : "Scout";
+        promptParts.push(`[${speaker}] ${msg.content}`);
+    }
+    promptParts.push("[Scout]");
+    const promptText = promptParts.join("\n\n");
+
+    const tokenCount = await apiCountTokens(promptText);
+    if (tokenCount === null) {
+        if (bar) bar.style.display = "none";
+        return;
+    }
+
+    const pct = Math.min(tokenCount / BLOCK_SIZE, 1.0);
 
     bar.style.display = "flex";
     fill.style.width = (pct * 100).toFixed(1) + "%";
-    fill.className = "token-bar-fill" + (pct > 0.9 ? " danger" : pct > 0.7 ? " warn" : "");
-    count.textContent = `~${tokens.toLocaleString()} / ${BLOCK_SIZE.toLocaleString()} tokens`;
+    fill.className = "token-bar-fill" + (pct >= 1.0 ? " danger" : pct > 0.7 ? " warn" : "");
+    count.textContent = `${tokenCount.toLocaleString()} / ${BLOCK_SIZE.toLocaleString()} tokens`;
+
+    // Auto-mark full when context hits 100%
+    if (
+        pct >= 1.0 &&
+        activeConversationStatus === "active" &&
+        activeConversationId
+    ) {
+        const ok = await apiSetStatus(activeConversationId, "full");
+        if (ok) {
+            activeConversationStatus = "full";
+            await loadConversation(activeConversationId);
+        }
+    }
 }
 
-function renderMessages(messages) {
+function renderMessages(messages, status = "active") {
     const container = document.getElementById("messages");
     container.innerHTML = "";
 
@@ -243,27 +568,39 @@ function renderMessages(messages) {
         return;
     }
 
-    for (const msg of messages) {
-        appendMessage(msg.role, msg.content, false, msg.timestamp);
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        appendMessage(msg.role, msg.content, false, msg.timestamp, i, msg.user_name);
     }
     updateTokenBar(messages);
 }
 
 async function loadConversation(id) {
     activeConversationId = id;
+    stopDreamPoll();
 
     const conv = await apiGetConversation(id);
     if (!conv) return;
 
-    renderChatPanel();
-    renderMessages(conv.messages);
+    activeConversationStatus = conv.status || "active";
+
+    renderChatPanel(activeConversationStatus);
+    renderMessages(conv.messages, activeConversationStatus);
     refreshSidebar();
 
-    document.getElementById("msgInput").focus();
+    // Resume dream poll if training was in progress when we navigated away
+    if (activeConversationStatus === "training") {
+        startDreamPoll(id);
+    }
+
+    if (canSend(activeConversationStatus)) {
+        document.getElementById("msgInput").focus();
+    }
 }
 
 async function sendMessage() {
     if (isStreaming || !activeConversationId) return;
+    if (!canSend(activeConversationStatus)) return;
 
     const input = document.getElementById("msgInput");
     const text = input.value.trim();
@@ -276,9 +613,9 @@ async function sendMessage() {
     isStreaming = true;
 
     const userTs = new Date().toISOString();
-    appendMessage("user", text, false, userTs);
+    appendMessage("user", text, false, userTs, null, userName);
 
-    const bubble = appendMessage("assistant", "", true, new Date().toISOString());
+    const bubble = appendMessage("assistant", "", true, new Date().toISOString(), null, null);
 
     let accumulated = "";
 
@@ -286,7 +623,14 @@ async function sendMessage() {
         const res = await fetch(`/api/chat/conversations/${activeConversationId}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ conversation_id: activeConversationId, message: text, checkpoint: activeCheckpoint, active_modules: activeModules, generation: generationParams }),
+            body: JSON.stringify({
+                conversation_id: activeConversationId,
+                message: text,
+                checkpoint: activeCheckpoint,
+                active_modules: activeModules,
+                generation: generationParams,
+                user_name: userName,
+            }),
         });
 
         if (!res.ok) {
@@ -334,9 +678,11 @@ async function sendMessage() {
         document.getElementById("sendBtn").disabled = false;
         input.focus();
         refreshSidebar();
-        // Refresh token bar from server-side message list (has accurate content)
         const conv = await apiGetConversation(activeConversationId);
-        if (conv) updateTokenBar(conv.messages);
+        if (conv) {
+            activeConversationStatus = conv.status || "active";
+            renderMessages(conv.messages, activeConversationStatus);
+        }
     }
 }
 
@@ -385,14 +731,14 @@ async function initGenerationSettings() {
 
 // ── Module toggles ──────────────────────────────────────────────────────────
 
-let activeModules = null;        // null = all modules (server default)
-let _checkpointModuleMap = {};   // filename → num_modules
+let activeModules = null;
+let _checkpointModuleMap = {};
 
 function updateModuleToggles(numModules) {
     const container = document.getElementById("moduleToggles");
     container.innerHTML = "";
 
-    if (numModules <= 1) return;   // nothing to toggle with a single module
+    if (numModules <= 1) return;
 
     const labelEl = document.createElement("span");
     labelEl.className = "module-toggles-label";
@@ -409,7 +755,6 @@ function updateModuleToggles(numModules) {
         cb.type = "checkbox";
         cb.id = `moduleCb${i}`;
         cb.checked = true;
-        // Module 0 cannot be disabled — it's the foundation everything runs on
         if (i === 0) cb.disabled = true;
 
         const lbl = document.createElement("label");
@@ -465,13 +810,13 @@ async function initCheckpointSelector() {
 document.getElementById("newConvBtn").addEventListener("click", async () => {
     const conv = await apiNewConversation();
     activeConversationId = conv.id;
-    renderChatPanel();
+    activeConversationStatus = "active";
+    renderChatPanel("active");
     renderMessages([]);
     await refreshSidebar();
     document.getElementById("msgInput").focus();
 });
 
-// Deep-link: /chat/?conversation=<id>
 await Promise.all([initCheckpointSelector(), initGenerationSettings()]);
 
 const params = new URLSearchParams(window.location.search);

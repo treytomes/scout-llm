@@ -45,18 +45,28 @@
   </aside>
 
   <main class="chat-panel" id="chatPanel">
-    <div class="token-bar" id="tokenBar" style="display:none">
-      <span class="token-bar-label">Context</span>
-      <div class="token-bar-track">
-        <div class="token-bar-fill" id="tokenBarFill"></div>
-      </div>
-      <span class="token-bar-count" id="tokenBarCount"></span>
-    </div>
     <div class="no-conversation" id="noConversation">
       Select or start a conversation.
     </div>
   </main>
 
+</div>
+
+<!-- Dream cycle modal -->
+<div class="dream-modal-backdrop" id="dreamModalBackdrop" style="display:none">
+  <div class="dream-modal" id="dreamModal">
+    <div class="dream-modal-header">
+      <span class="dream-modal-title">Committing to memory</span>
+      <span class="dream-modal-phase" id="dreamModalPhase">—</span>
+    </div>
+    <div class="dream-modal-progress-track">
+      <div class="dream-modal-progress-fill" id="dreamModalProgressFill"></div>
+    </div>
+    <div class="dream-modal-log" id="dreamModalLog"></div>
+    <div class="dream-modal-footer">
+      <span class="dream-modal-elapsed" id="dreamModalElapsed"></span>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="/static/chat.js"></script>

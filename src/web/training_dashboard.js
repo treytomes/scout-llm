@@ -89,20 +89,51 @@ function stopPolling() {
     }
 }
 
+function showTrainingDialog() {
+    document.getElementById("trainingDialog").style.display = "block";
+    document.getElementById("startBtn").style.display = "none";
+}
+
+function hideTrainingDialog() {
+    document.getElementById("trainingDialog").style.display = "none";
+    document.getElementById("startBtn").style.display = "inline-block";
+}
+
 async function startTraining() {
-    const btn = document.getElementById("startBtn");
-    btn.disabled = true;
+    const dataset = document.getElementById("tdDataset").value.trim() || "scout_dialogue";
+    const maxSteps = parseInt(document.getElementById("tdSteps").value, 10) || 400;
+    const lr = parseFloat(document.getElementById("tdLr").value) || 5e-5;
+    const warmup = parseInt(document.getElementById("tdWarmup").value, 10) || 50;
+    const batchSize = parseInt(document.getElementById("tdBatch").value, 10) || 8;
+    const moduleConfig = document.getElementById("tdModuleConfig").value;
+    const freezeModule0 = document.getElementById("tdFreezeModule0").checked;
+    const freezeLC = document.getElementById("tdFreezeLC").checked;
+    const resetOptimizer = document.getElementById("tdResetOptimizer").checked;
+
+    const freezeModules = freezeModule0 ? [0] : null;
+
+    hideTrainingDialog();
+    document.getElementById("startBtn").disabled = true;
+
     try {
         const res = await fetch("/api/training/start", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ dataset_name: "TinyStories", batch_size: 8, max_steps: 1000 }),
+            body: JSON.stringify({
+                dataset_name: dataset,
+                batch_size: batchSize,
+                max_steps: maxSteps,
+                module_config: moduleConfig,
+                reset_optimizer: resetOptimizer,
+                freeze_modules: freezeModules,
+                freeze_language_core: freezeLC,
+            }),
         });
         if (!res.ok) {
             const body = await res.json().catch(() => ({}));
             document.getElementById("trainingStatusText").textContent =
                 `Start failed: ${body?.detail ?? res.statusText}`;
-            btn.disabled = false;
+            document.getElementById("startBtn").disabled = false;
             return;
         }
         liveMode = true;
@@ -110,7 +141,7 @@ async function startTraining() {
         startPolling();
     } catch (err) {
         document.getElementById("trainingStatusText").textContent = `Start failed: ${err.message}`;
-        btn.disabled = false;
+        document.getElementById("startBtn").disabled = false;
     }
 }
 
@@ -236,7 +267,9 @@ function renderLogTable(rows) {
 document.addEventListener("DOMContentLoaded", async () => {
     insertNav();
 
-    document.getElementById("startBtn").addEventListener("click", startTraining);
+    document.getElementById("startBtn").addEventListener("click", showTrainingDialog);
+    document.getElementById("tdConfirmBtn").addEventListener("click", startTraining);
+    document.getElementById("tdCancelBtn").addEventListener("click", hideTrainingDialog);
     document.getElementById("stopBtn").addEventListener("click", stopTraining);
 
     loadTrainingLogs();

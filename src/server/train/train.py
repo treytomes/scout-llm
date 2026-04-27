@@ -76,6 +76,27 @@ def _update_checkpoint_metadata(out_dir: Path, filename: str, step: int, cfg: di
     meta_path.write_text(json.dumps(meta, indent=2))
 
 
+def _frozen_state(model) -> dict:
+    """Return frozen_modules list and language_core_frozen flag for the model."""
+    from model.model import ScoutModel
+    if not isinstance(model, ScoutModel):
+        # torch.compile wraps the model; unwrap to inspect
+        inner = getattr(model, "_orig_mod", model)
+    else:
+        inner = model
+
+    frozen_modules = [
+        i for i, m in enumerate(inner.expert_modules)
+        if not any(p.requires_grad for p in m.parameters())
+    ]
+    language_core_frozen = not any(p.requires_grad for p in inner.language.parameters())
+
+    return {
+        "frozen_modules": frozen_modules,
+        "language_core_frozen": language_core_frozen,
+    }
+
+
 def save_checkpoint(out_dir, step, model, optimizer, scheduler, cfg):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -86,19 +107,21 @@ def save_checkpoint(out_dir, step, model, optimizer, scheduler, cfg):
     ckpt_path = out_dir / f"{stem}.pt"
     latest_path = out_dir / "latest.pt"
 
+    full_cfg = {**cfg, **_frozen_state(model)}
+
     checkpoint = {
         "step": step,
         "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict(),
-        "config": cfg,
+        "optimizer": optimizer.state_dict() if optimizer is not None else {},
+        "scheduler": scheduler.state_dict() if scheduler is not None else {},
+        "config": full_cfg,
     }
 
     torch.save(checkpoint, ckpt_path)
     torch.save(checkpoint, latest_path)
 
-    _update_checkpoint_metadata(out_dir, f"{stem}.pt", step, cfg)
-    _update_checkpoint_metadata(out_dir, "latest.pt", step, cfg)
+    _update_checkpoint_metadata(out_dir, f"{stem}.pt", step, full_cfg)
+    _update_checkpoint_metadata(out_dir, "latest.pt", step, full_cfg)
 
     logger.info("Saved checkpoint: %s", ckpt_path)
 
@@ -202,6 +225,8 @@ def run_training(
     min_lr: float = None,
     warmup_steps: int = None,
     reset_optimizer: bool = False,
+    freeze_modules: list = None,   # e.g. [0] to freeze module 0 before training
+    freeze_language_core: bool = False,
     stop_flag: list = None,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -287,15 +312,51 @@ def run_training(
     data_iter = iter(loader)
 
     # --------------------------------------------------
-    # Model
+    # Checkpoint phase — read before building model so freeze logic can use it
     # --------------------------------------------------
 
     latest = Path(checkpoint_dir) / "latest.pt"
+    if latest.exists():
+        import json as _json
+        _meta_path = Path(checkpoint_dir) / "metadata.json"
+        _meta = _json.loads(_meta_path.read_text()) if _meta_path.exists() else {}
+        ckpt_phase = _meta.get("latest.pt", {}).get("phase", model_config.get("phase", 0))
+    else:
+        ckpt_phase = model_config.get("phase", 0)
+
+    # --------------------------------------------------
+    # Model
+    # --------------------------------------------------
+
     if latest.exists():
         # Match architecture to checkpoint (handles multi-module Phase 1+)
         model = init_model_for_checkpoint(latest, tokenizer.vocab_size, device, model_config)
     else:
         model = load_fresh_model(device, model_config)
+
+    # ── Freeze policy ──────────────────────────────────────────────────────────
+    # Phase 1+ always freezes module 0 (TinyStories linguistic core) regardless
+    # of what caller passed. This is the developmental architecture invariant:
+    # earlier modules are never updated by later training phases.
+    # Explicit freeze_modules/freeze_language_core args layer on top.
+    if ckpt_phase >= 1:
+        model.freeze_module(0)
+        logger.info("Phase %d: module 0 frozen automatically.", ckpt_phase)
+
+    if freeze_modules:
+        for idx in freeze_modules:
+            if idx != 0 or ckpt_phase < 1:  # avoid double-freezing module 0
+                model.freeze_module(idx)
+
+    if freeze_language_core:
+        model.freeze_language_core()
+
+    # Hard assertion: in Phase 1+, module 0 must be frozen before we build the
+    # optimizer. If it isn't, we'd silently update the TinyStories foundation.
+    if ckpt_phase >= 1:
+        assert not any(p.requires_grad for p in model.expert_modules[0].parameters()), \
+            "FATAL: Phase 1+ training started with module 0 unfrozen. Aborting."
+        logger.info("Freeze assertion passed: module 0 confirmed frozen.")
 
     param_stats = count_parameters(model)
 
@@ -339,16 +400,6 @@ def run_training(
     # --------------------------------------------------
     # Resume checkpoint
     # --------------------------------------------------
-
-    # Read phase from the checkpoint config so numbered files are namespaced correctly
-    latest = Path(checkpoint_dir) / "latest.pt"
-    if latest.exists():
-        import json as _json
-        _meta_path = Path(checkpoint_dir) / "metadata.json"
-        _meta = _json.loads(_meta_path.read_text()) if _meta_path.exists() else {}
-        ckpt_phase = _meta.get("latest.pt", {}).get("phase", model_config.get("phase", 0))
-    else:
-        ckpt_phase = model_config.get("phase", 0)
 
     if reset_optimizer:
         # Load model weights only — discard optimizer/scheduler state.

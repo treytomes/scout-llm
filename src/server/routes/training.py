@@ -26,7 +26,11 @@ class StartTrainingRequest(BaseModel):
     batch_size: int = 8
     max_steps: int = 1000
     module_config: str = "tinystories"
+    lr: float = None
+    warmup_steps: int = None
     reset_optimizer: bool = False
+    freeze_modules: list = None
+    freeze_language_core: bool = False
 
 
 @view_router.get("/")
@@ -48,7 +52,11 @@ def start_training(req: StartTrainingRequest):
         model_config=model_cfg,
         batch_size=req.batch_size,
         max_steps=req.max_steps,
+        lr=req.lr,
+        warmup_steps=req.warmup_steps,
         reset_optimizer=req.reset_optimizer,
+        freeze_modules=req.freeze_modules,
+        freeze_language_core=req.freeze_language_core,
     )
     return {"status": "started"}
 
