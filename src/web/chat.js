@@ -327,11 +327,12 @@ function startDreamPoll(conversationId) {
         if (s.phase !== lastPhase) {
             lastPhase = s.phase;
             if (s.phase === "sft") {
-                dreamLog(`SFT pass — ${s.sft_steps} steps`);
+                const mode = s.use_lora ? "LoRA adapter" : "direct weights";
+                dreamLog(`SFT pass — ${s.sft_steps} steps [${mode}]`);
             } else if (s.phase === "dpo") {
                 dreamLog(`DPO pass — ${s.dpo_steps} steps`);
             } else if (s.phase === "locking") {
-                dreamLog("Saving checkpoint…");
+                dreamLog("Saving…");
             } else if (s.phase === "done") {
                 dreamLog("Complete. Conversation locked.");
             }

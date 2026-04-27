@@ -140,6 +140,27 @@ MODEL_CONVERSATIONAL = {
 #     "dropout": 0.1,
 # }
 
+# ──────────────────────────────────────────────────────────────────────────────
+# LoRA — Conversational Memory Adapters
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Rank of the low-rank decomposition. r=8 gives ~295K params per adapter
+# across Module 1's 7 blocks (qkv + out projections). Large enough to hold
+# relational texture; small enough that drift per conversation is bounded.
+LORA_RANK = 8
+
+# Alpha scales the LoRA contribution: effective_scale = alpha / rank.
+# alpha=16 → scale=2.0, keeping the adapter signal comparable to base weights.
+LORA_ALPHA = 16
+
+# After this many dream cycles, merge all accumulated adapters into Module 1's
+# base weights and reset. Configurable — start conservative, revisit after
+# observing how much individual conversations shift the weights.
+LORA_MERGE_EVERY = 10
+
+# Where per-conversation LoRA adapters are saved before merging.
+LORA_ADAPTERS_DIR = DATA_PATH / "lora_adapters"
+
 #
 # Generation parameters (how the model speaks)
 #

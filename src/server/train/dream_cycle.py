@@ -22,6 +22,12 @@ import config
 logger = logging.getLogger(config.LOGGER_NAME)
 
 
+def _pending_count(adapters_dir) -> int:
+    """Return number of pending adapters without constructing a full manifest."""
+    from model.lora import LoRAManifest
+    return LoRAManifest(Path(adapters_dir)).pending_count()
+
+
 # ─────────────────────────────────────────────────────────────
 # Helpers — conversation → training data
 # ─────────────────────────────────────────────────────────────
@@ -189,12 +195,15 @@ class DreamCycleJob(threading.Thread):
     def run(self):
         from ai_clients.tokenizer import load_tokenizer
         from model.loader import load_model
+        from model.lora import attach_lora, detach_lora, lora_state_dict, save_adapter_and_maybe_merge
         from torch.optim import AdamW
         from torch.utils.data import DataLoader
         from chat.conversation_store import get_conversation, set_conversation_status
 
         self.running = True
         self.start_time = time.time()
+
+        model = None
 
         try:
             # ── Load conversation ──────────────────────────────────────────────
@@ -214,9 +223,40 @@ class DreamCycleJob(threading.Thread):
             tokenizer = load_tokenizer()
             ckpt_path = Path(config.CHECKPOINT_DIR) / "latest.pt"
             model = load_model(ckpt_path, device)
-            model.train()
 
             block_size = config.BLOCK_SIZE
+
+            # ── Decide mode: LoRA (Module 1 frozen) vs direct ─────────────────
+            # LoRA mode engages once Module 1 is a frozen foundation.
+            # Direct mode is used during Module 1's own formation phase.
+            use_lora = (
+                len(model.expert_modules) >= 2 and
+                not any(p.requires_grad for p in model.expert_modules[1].parameters())
+            )
+            self.use_lora = use_lora
+
+            if use_lora:
+                logger.info("Dream cycle: Module 1 frozen — using LoRA adapter (r=%d α=%d)",
+                            config.LORA_RANK, config.LORA_ALPHA)
+                attach_lora(model.expert_modules[1], rank=config.LORA_RANK, alpha=config.LORA_ALPHA)
+                # Only LoRA parameters should train
+                for p in model.parameters():
+                    p.requires_grad = False
+                for block in model.expert_modules[1].blocks:
+                    for target in ("attn.qkv", "attn.out"):
+                        parts = target.split(".")
+                        parent = block
+                        for part in parts[:-1]:
+                            parent = getattr(parent, part)
+                        linear = getattr(parent, parts[-1])
+                        from model.lora import LoRALinear
+                        if isinstance(linear, LoRALinear):
+                            linear.lora_A.requires_grad = True
+                            linear.lora_B.requires_grad = True
+            else:
+                logger.info("Dream cycle: Module 1 not frozen — direct weight update mode")
+
+            model.train()
 
             # ── Build datasets and derive step counts ──────────────────────────
             sft_ds = _SFTDataset(sft_text, tokenizer, block_size)
@@ -226,12 +266,18 @@ class DreamCycleJob(threading.Thread):
             self.dpo_steps = len(dpo_ds) * self.dpo_epochs if dpo_ds else 0
 
             total_steps = self.sft_steps + self.dpo_steps
+            mode_label = "LoRA" if use_lora else "direct"
             logger.info(
-                "Dream cycle: %d SFT blocks × %d epochs = %d steps; "
+                "Dream cycle [%s]: %d SFT blocks × %d epochs = %d steps; "
                 "%d DPO pairs × %d epochs = %d steps",
+                mode_label,
                 len(sft_ds), self.sft_epochs, self.sft_steps,
                 len(dpo_pairs), self.dpo_epochs, self.dpo_steps,
             )
+
+            trainable_params = [p for p in model.parameters() if p.requires_grad]
+            if not trainable_params:
+                raise RuntimeError("No trainable parameters found for dream cycle.")
 
             # ── SFT pass ───────────────────────────────────────────────────────
             self.phase = "sft"
@@ -239,10 +285,7 @@ class DreamCycleJob(threading.Thread):
             sft_loader = DataLoader(sft_ds, batch_size=1, shuffle=True)
             sft_iter = iter(sft_loader)
 
-            optimizer = AdamW(
-                [p for p in model.parameters() if p.requires_grad],
-                lr=self.sft_lr,
-            )
+            optimizer = AdamW(trainable_params, lr=self.sft_lr)
 
             for step in range(self.sft_steps):
                 try:
@@ -275,10 +318,7 @@ class DreamCycleJob(threading.Thread):
                 dpo_loader = DataLoader(dpo_ds, batch_size=1, shuffle=True)
                 dpo_iter = iter(dpo_loader)
 
-                dpo_optimizer = AdamW(
-                    [p for p in model.parameters() if p.requires_grad],
-                    lr=self.dpo_lr,
-                )
+                dpo_optimizer = AdamW(trainable_params, lr=self.dpo_lr)
 
                 for step in range(self.dpo_steps):
                     try:
@@ -303,29 +343,63 @@ class DreamCycleJob(threading.Thread):
             else:
                 logger.info("Dream cycle: no DPO pairs, skipping DPO pass.")
 
-            # ── Save checkpoint ────────────────────────────────────────────────
+            # ── Save / merge ───────────────────────────────────────────────────
             self.phase = "locking"
-            logger.info("Dream cycle: saving checkpoint")
 
             import json as _json
             meta_path = Path(config.CHECKPOINT_DIR) / "metadata.json"
             meta = _json.loads(meta_path.read_text()) if meta_path.exists() else {}
             ckpt_phase = meta.get("latest.pt", {}).get("phase", 0)
+            ckpt_step  = meta.get("latest.pt", {}).get("step", 0)
 
             from train.train import save_checkpoint, _frozen_state
-            save_checkpoint(
-                config.CHECKPOINT_DIR,
-                step=meta.get("latest.pt", {}).get("step", 0),
-                model=model,
-                optimizer=optimizer,
-                scheduler=None,
-                cfg={
-                    "vocab_size": tokenizer.vocab_size,
-                    "block_size": block_size,
-                    "phase": ckpt_phase,
-                    **_frozen_state(model),
-                },
-            )
+
+            if use_lora:
+                # Save this conversation's adapter; merge if threshold reached
+                merged = save_adapter_and_maybe_merge(
+                    model=model,
+                    module_index=1,
+                    conversation_id=self.conversation_id,
+                    adapters_dir=Path(config.LORA_ADAPTERS_DIR),
+                    merge_every=config.LORA_MERGE_EVERY,
+                    rank=config.LORA_RANK,
+                    alpha=config.LORA_ALPHA,
+                )
+                if merged:
+                    logger.info("Dream cycle: LoRA merge completed — saving merged checkpoint")
+                    save_checkpoint(
+                        config.CHECKPOINT_DIR,
+                        step=ckpt_step,
+                        model=model,
+                        optimizer=None,
+                        scheduler=None,
+                        cfg={
+                            "vocab_size": tokenizer.vocab_size,
+                            "block_size": block_size,
+                            "phase": ckpt_phase,
+                            **_frozen_state(model),
+                        },
+                    )
+                else:
+                    # Detach adapter without merging — base model unchanged
+                    detach_lora(model.expert_modules[1])
+                    logger.info("Dream cycle: adapter saved (merge in %d cycles)",
+                                config.LORA_MERGE_EVERY - _pending_count(config.LORA_ADAPTERS_DIR))
+            else:
+                # Direct mode — save updated weights immediately
+                save_checkpoint(
+                    config.CHECKPOINT_DIR,
+                    step=ckpt_step,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=None,
+                    cfg={
+                        "vocab_size": tokenizer.vocab_size,
+                        "block_size": block_size,
+                        "phase": ckpt_phase,
+                        **_frozen_state(model),
+                    },
+                )
 
             # ── Lock conversation ──────────────────────────────────────────────
             set_conversation_status(self.conversation_id, "locked")
@@ -343,6 +417,12 @@ class DreamCycleJob(threading.Thread):
                 set_conversation_status(self.conversation_id, "full")
             except Exception:
                 pass
+            # Clean up LoRA wrappers if they were attached
+            if model is not None and hasattr(self, "use_lora") and self.use_lora:
+                try:
+                    detach_lora(model.expert_modules[1])
+                except Exception:
+                    pass
         finally:
             self.running = False
             self.completed = True
@@ -356,5 +436,6 @@ class DreamCycleJob(threading.Thread):
             "progress": self.progress,
             "sft_steps": self.sft_steps,
             "dpo_steps": self.dpo_steps,
+            "use_lora": getattr(self, "use_lora", None),
             "elapsed": time.time() - self.start_time if self.start_time else None,
         }
