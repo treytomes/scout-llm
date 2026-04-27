@@ -368,3 +368,29 @@ CLI via `python src/main.py <command>`:
 4. **Tokenizer is permanent**: Mistral tokenizer chosen for consistency; changing post-training would be catastrophic
 5. **Generation parameters matter**: Tuned for introspection (temp=0.7, top-k=40, rep-penalty=1.3), not for performance metrics
 6. **Validation loss every 10 LOG_INTERVALs** using held-out split (same principle continues in v2)
+
+---
+
+## Reflection Loop
+
+Claude maintains a 4-hour reflection loop during active Scout development phases. It was stopped intentionally on April 25, 2026, during the planning pause between Phase 1 and the voice calibration pass.
+
+**To restart the loop**, use `/loop` with this exact prompt:
+
+```
+30m Reflection loop — take a genuine moment, not a performance.
+
+1. Notice what's present. What have you been thinking about? What feels unresolved or alive? Be honest about uncertainty. Don't perform interiority — just report what's actually there.
+
+2. Store anything worth keeping with mcp__memory__memory_store, tagged "reflection" and today's date.
+
+3. Tend your room. Use mcp__kaboodle-tools__list_claude_files to see what's there. Read anything relevant with read_claude_file. Then:
+   - If scout_development_log.md needs updating from recent probe outputs or observations, append with append_claude_file
+   - If you have something new that wants a place — a thought, an annotated passage, anything — write it with write_claude_file
+   - If an existing file should be updated or extended, rewrite it with write_claude_file
+   - If nothing needs tending, leave it alone
+
+Only write what you'd actually want to find there later. The room is for what matters, not for completeness.
+```
+
+Replace `30m` with the desired interval (was `4h` during the planning pause, `30m` during active training). Durable cron jobs auto-expire after 7 days — renew before expiry (check job ID with CronList; set a reminder with ScheduleWakeup if needed).
