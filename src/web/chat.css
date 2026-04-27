@@ -50,6 +50,144 @@ body {
   padding: 7px 12px;
 }
 
+.checkpoint-selector {
+  margin-top: 10px;
+}
+
+.checkpoint-selector label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.checkpoint-selector select {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 8px;
+  background: var(--bg, #1a1a1a);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* ── Module toggles ── */
+
+.module-toggles {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.module-toggles-label {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.module-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.module-toggle-row input[type="checkbox"] {
+  accent-color: var(--primary);
+  cursor: pointer;
+  width: 13px;
+  height: 13px;
+}
+
+.module-toggle-row label {
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.module-toggle-row label .module-tag {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  margin-left: 4px;
+}
+
+.module-toggle-row input[type="checkbox"]:disabled + label {
+  color: var(--text-muted, #888);
+  cursor: default;
+}
+
+/* ── Generation settings ── */
+
+.generation-settings {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+}
+
+.generation-settings summary {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 0 4px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.generation-settings summary::after {
+  content: " ▸";
+  font-size: 9px;
+}
+
+.generation-settings[open] summary::after {
+  content: " ▾";
+}
+
+.gen-field {
+  margin-top: 8px;
+}
+
+.gen-field label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  margin-bottom: 3px;
+}
+
+.gen-val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.gen-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.gen-reset {
+  width: 100%;
+  margin: 10px 0 4px;
+  font-size: 11px;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted, #888);
+}
+
+.gen-reset:hover {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
 .conversation-list {
   flex: 1;
   overflow-y: auto;
@@ -136,6 +274,57 @@ body {
   min-width: 0;
 }
 
+/* ── Token bar ── */
+
+.token-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 32px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.token-bar-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.token-bar-track {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.token-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.token-bar-fill.warn {
+  background: #e6a817;
+}
+
+.token-bar-fill.danger {
+  background: #dc3545;
+}
+
+.token-bar-count {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 80px;
+  text-align: right;
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;
@@ -169,11 +358,24 @@ body {
   align-items: flex-start;
 }
 
+.message-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .message-speaker {
   font-size: 11px;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.message-timestamp {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
 }
 
 .message-bubble {

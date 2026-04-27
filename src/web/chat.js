@@ -4,6 +4,9 @@ insertNav();
 
 let activeConversationId = null;
 let isStreaming = false;
+let activeCheckpoint = "latest.pt";
+let generationDefaults = null;
+let generationParams = {};
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -25,6 +28,16 @@ async function apiGetConversation(id) {
 
 async function apiDeleteConversation(id) {
     await fetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+}
+
+async function apiListCheckpoints() {
+    const res = await fetch("/api/chat/checkpoints");
+    return res.json();
+}
+
+async function apiGenerationDefaults() {
+    const res = await fetch("/api/chat/generation-defaults");
+    return res.json();
 }
 
 async function apiRenameConversation(id, title) {
@@ -103,12 +116,20 @@ async function refreshSidebar() {
 
 function renderNoConversation() {
     const panel = document.getElementById("chatPanel");
-    panel.innerHTML = `<div class="no-conversation" id="noConversation">Select or start a conversation.</div>`;
+    panel.innerHTML = `
+        <div class="token-bar" id="tokenBar" style="display:none"></div>
+        <div class="no-conversation" id="noConversation">Select or start a conversation.</div>
+    `;
 }
 
 function renderChatPanel() {
     const panel = document.getElementById("chatPanel");
     panel.innerHTML = `
+        <div class="token-bar" id="tokenBar" style="display:none">
+            <span class="token-bar-label">Context</span>
+            <div class="token-bar-track"><div class="token-bar-fill" id="tokenBarFill"></div></div>
+            <span class="token-bar-count" id="tokenBarCount"></span>
+        </div>
         <div class="messages" id="messages"></div>
         <div class="input-area">
             <textarea id="msgInput" placeholder="Say something to Scout…" rows="1"></textarea>
@@ -136,7 +157,17 @@ function renderChatPanel() {
     sendBtn.addEventListener("click", sendMessage);
 }
 
-function appendMessage(role, content, streaming = false) {
+function formatTimestamp(isoString) {
+    if (!isoString) return "";
+    try {
+        const d = new Date(isoString);
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch {
+        return "";
+    }
+}
+
+function appendMessage(role, content, streaming = false, timestamp = null) {
     const messages = document.getElementById("messages");
 
     // Remove empty state if present
@@ -146,20 +177,60 @@ function appendMessage(role, content, streaming = false) {
     const msg = document.createElement("div");
     msg.className = `message ${role}`;
 
-    const speaker = document.createElement("div");
+    const meta = document.createElement("div");
+    meta.className = "message-meta";
+
+    const speaker = document.createElement("span");
     speaker.className = "message-speaker";
     speaker.textContent = role === "user" ? "Trey" : "Scout";
+
+    const ts = document.createElement("span");
+    ts.className = "message-timestamp";
+    ts.textContent = timestamp ? formatTimestamp(timestamp) : formatTimestamp(new Date().toISOString());
+
+    meta.appendChild(speaker);
+    meta.appendChild(ts);
 
     const bubble = document.createElement("div");
     bubble.className = "message-bubble" + (streaming ? " streaming" : "");
     bubble.textContent = content;
 
-    msg.appendChild(speaker);
+    msg.appendChild(meta);
     msg.appendChild(bubble);
     messages.appendChild(msg);
     messages.scrollTop = messages.scrollHeight;
 
     return bubble;
+}
+
+const BLOCK_SIZE = 1024;  // must match config.py
+
+function estimateTokens(messages) {
+    // Rough estimate: characters / 4, plus speaker tags
+    let chars = 0;
+    for (const msg of messages) {
+        chars += (msg.content || "").length + 12; // 12 for [Speaker] + newlines
+    }
+    return Math.round(chars / 4);
+}
+
+function updateTokenBar(messages) {
+    const bar = document.getElementById("tokenBar");
+    const fill = document.getElementById("tokenBarFill");
+    const count = document.getElementById("tokenBarCount");
+
+    if (!messages || messages.length === 0) {
+        bar.style.display = "none";
+        return;
+    }
+
+    const tokens = estimateTokens(messages);
+    const pct = Math.min(tokens / BLOCK_SIZE, 1.0);
+
+    bar.style.display = "flex";
+    fill.style.width = (pct * 100).toFixed(1) + "%";
+    fill.className = "token-bar-fill" + (pct > 0.9 ? " danger" : pct > 0.7 ? " warn" : "");
+    count.textContent = `~${tokens.toLocaleString()} / ${BLOCK_SIZE.toLocaleString()} tokens`;
 }
 
 function renderMessages(messages) {
@@ -168,12 +239,14 @@ function renderMessages(messages) {
 
     if (messages.length === 0) {
         container.innerHTML = `<div class="empty-state">Start the conversation.</div>`;
+        updateTokenBar([]);
         return;
     }
 
     for (const msg of messages) {
-        appendMessage(msg.role, msg.content);
+        appendMessage(msg.role, msg.content, false, msg.timestamp);
     }
+    updateTokenBar(messages);
 }
 
 async function loadConversation(id) {
@@ -202,9 +275,10 @@ async function sendMessage() {
     document.getElementById("sendBtn").disabled = true;
     isStreaming = true;
 
-    appendMessage("user", text);
+    const userTs = new Date().toISOString();
+    appendMessage("user", text, false, userTs);
 
-    const bubble = appendMessage("assistant", "", true);
+    const bubble = appendMessage("assistant", "", true, new Date().toISOString());
 
     let accumulated = "";
 
@@ -212,7 +286,7 @@ async function sendMessage() {
         const res = await fetch(`/api/chat/conversations/${activeConversationId}/message`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ conversation_id: activeConversationId, message: text }),
+            body: JSON.stringify({ conversation_id: activeConversationId, message: text, checkpoint: activeCheckpoint, active_modules: activeModules, generation: generationParams }),
         });
 
         if (!res.ok) {
@@ -260,7 +334,130 @@ async function sendMessage() {
         document.getElementById("sendBtn").disabled = false;
         input.focus();
         refreshSidebar();
+        // Refresh token bar from server-side message list (has accurate content)
+        const conv = await apiGetConversation(activeConversationId);
+        if (conv) updateTokenBar(conv.messages);
     }
+}
+
+// ── Generation settings ──────────────────────────────────────────────────────
+
+function bindSlider(id, valId, decimals, onChange) {
+    const slider = document.getElementById(id);
+    const display = document.getElementById(valId);
+    const update = () => {
+        const v = parseFloat(slider.value);
+        display.textContent = decimals > 0 ? v.toFixed(decimals) : String(Math.round(v));
+        onChange(v);
+    };
+    slider.addEventListener("input", update);
+    return (value) => {
+        slider.value = value;
+        update();
+    };
+}
+
+async function initGenerationSettings() {
+    generationDefaults = await apiGenerationDefaults();
+    generationParams = { ...generationDefaults };
+
+    const setTemperature = bindSlider("genTemperature", "genTemperatureVal", 2,
+        v => { generationParams.temperature = v; });
+    const setVocabulary = bindSlider("genVocabulary", "genVocabularyVal", 0,
+        v => { generationParams.vocabulary = Math.round(v); });
+    const setRepPenalty = bindSlider("genRepPenalty", "genRepPenaltyVal", 2,
+        v => { generationParams.rep_penalty = v; });
+    const setMaxTokens = bindSlider("genMaxTokens", "genMaxTokensVal", 0,
+        v => { generationParams.max_new_tokens = Math.round(v); });
+
+    setTemperature(generationDefaults.temperature);
+    setVocabulary(generationDefaults.vocabulary);
+    setRepPenalty(generationDefaults.rep_penalty);
+    setMaxTokens(generationDefaults.max_new_tokens);
+
+    document.getElementById("genResetBtn").addEventListener("click", () => {
+        setTemperature(generationDefaults.temperature);
+        setVocabulary(generationDefaults.vocabulary);
+        setRepPenalty(generationDefaults.rep_penalty);
+        setMaxTokens(generationDefaults.max_new_tokens);
+    });
+}
+
+// ── Module toggles ──────────────────────────────────────────────────────────
+
+let activeModules = null;        // null = all modules (server default)
+let _checkpointModuleMap = {};   // filename → num_modules
+
+function updateModuleToggles(numModules) {
+    const container = document.getElementById("moduleToggles");
+    container.innerHTML = "";
+
+    if (numModules <= 1) return;   // nothing to toggle with a single module
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "module-toggles-label";
+    labelEl.textContent = "Modules";
+    container.appendChild(labelEl);
+
+    const names = ["Linguistic foundation", "Conversational", "Reflective", "Inner voice"];
+
+    for (let i = 0; i < numModules; i++) {
+        const row = document.createElement("div");
+        row.className = "module-toggle-row";
+
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.id = `moduleCb${i}`;
+        cb.checked = true;
+        // Module 0 cannot be disabled — it's the foundation everything runs on
+        if (i === 0) cb.disabled = true;
+
+        const lbl = document.createElement("label");
+        lbl.htmlFor = `moduleCb${i}`;
+        lbl.innerHTML = `Module ${i} <span class="module-tag">${names[i] || ""}</span>`;
+
+        cb.addEventListener("change", syncActiveModules);
+        row.appendChild(cb);
+        row.appendChild(lbl);
+        container.appendChild(row);
+    }
+
+    syncActiveModules();
+}
+
+function syncActiveModules() {
+    const checkboxes = document.querySelectorAll(".module-toggle-row input[type=checkbox]");
+    if (checkboxes.length === 0) {
+        activeModules = null;
+        return;
+    }
+    activeModules = [];
+    checkboxes.forEach((cb, i) => { if (cb.checked) activeModules.push(i); });
+}
+
+// ── Checkpoint selector ──────────────────────────────────────────────────────
+
+async function initCheckpointSelector() {
+    const select = document.getElementById("checkpointSelect");
+    const checkpoints = await apiListCheckpoints();
+
+    select.innerHTML = "";
+    for (const ckpt of checkpoints) {
+        const opt = document.createElement("option");
+        opt.value = ckpt.filename;
+        opt.textContent = ckpt.label;
+        if (ckpt.filename === "latest.pt") opt.selected = true;
+        _checkpointModuleMap[ckpt.filename] = ckpt.num_modules || 1;
+        select.appendChild(opt);
+    }
+
+    activeCheckpoint = select.value;
+    updateModuleToggles(_checkpointModuleMap[activeCheckpoint] || 1);
+
+    select.addEventListener("change", () => {
+        activeCheckpoint = select.value;
+        updateModuleToggles(_checkpointModuleMap[activeCheckpoint] || 1);
+    });
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -275,6 +472,8 @@ document.getElementById("newConvBtn").addEventListener("click", async () => {
 });
 
 // Deep-link: /chat/?conversation=<id>
+await Promise.all([initCheckpointSelector(), initGenerationSettings()]);
+
 const params = new URLSearchParams(window.location.search);
 const deepLinkId = params.get("conversation");
 if (deepLinkId) {
