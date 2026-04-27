@@ -31,3 +31,81 @@
 .plan-results div {
   margin: 4px 0;
 }
+
+/* ── Row modal ── */
+
+.row-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-modal-overlay.open {
+  display: flex;
+}
+
+.row-modal {
+  background: var(--panel, #1a1f2b);
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 8px;
+  width: min(800px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.row-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border, #2a2f3a);
+  flex-shrink: 0;
+}
+
+.row-modal-title {
+  font-size: 13px;
+  color: var(--text-muted, #9aa3ad);
+  font-variant-numeric: tabular-nums;
+}
+
+.row-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted, #9aa3ad);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  margin: 0;
+}
+
+.row-modal-close:hover {
+  color: var(--text, #e0e4ef);
+}
+
+.row-modal-body {
+  padding: 16px;
+  margin: 0;
+  overflow-y: auto;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text, #e0e4ef);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Clickable rows */
+#dataTable tbody tr {
+  cursor: pointer;
+}
+
+#dataTable tbody tr:hover {
+  background: #1c2230;
+}

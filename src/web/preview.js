@@ -46,6 +46,31 @@ async function loadPage() {
   renderTable(data.rows);
 }
 
+function openRowModal(rowIndex, row) {
+  const overlay = document.getElementById("rowModalOverlay");
+  const title = document.getElementById("rowModalTitle");
+  const body = document.getElementById("rowModalBody");
+
+  title.textContent = `Row ${rowIndex}`;
+
+  // Prefer the 'chunk' or 'text' column if present for clean rendering;
+  // otherwise show all columns as labelled sections.
+  const preferredKey = ["chunk", "text"].find(k => k in row);
+  if (preferredKey) {
+    body.textContent = row[preferredKey];
+  } else {
+    body.textContent = Object.entries(row)
+      .map(([k, v]) => `── ${k} ──\n${typeof v === "string" ? v : JSON.stringify(v, null, 2)}`)
+      .join("\n\n");
+  }
+
+  overlay.classList.add("open");
+}
+
+function closeRowModal() {
+  document.getElementById("rowModalOverlay").classList.remove("open");
+}
+
 function renderTable(rows) {
 
   const table = document.getElementById("dataTable");
@@ -75,20 +100,22 @@ function renderTable(rows) {
 
   for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
+    const globalIndex = page * limit + rowIndex;
     const tr = document.createElement("tr");
 
     const td = document.createElement("td");
-    td.textContent = page * limit + rowIndex;
+    td.textContent = globalIndex;
     tr.appendChild(td);
 
     for (const c of columns) {
       const td = document.createElement("td");
-      const raw = JSON.stringify(row[c]);
+      const raw = typeof row[c] === "string" ? row[c] : JSON.stringify(row[c]);
       td.textContent = raw.length > 300 ? raw.slice(0, 300) + "…" : raw;
       td.title = raw.length > 300 ? raw : "";
       tr.appendChild(td);
     }
 
+    tr.addEventListener("click", () => openRowModal(globalIndex, row));
     tbody.appendChild(tr);
   }
 
@@ -163,6 +190,15 @@ async function generatePlan() {
 
 document.addEventListener("DOMContentLoaded", () => {
   insertNav();
+
+  // Modal close: button, overlay click, Escape key
+  document.getElementById("rowModalClose").onclick = closeRowModal;
+  document.getElementById("rowModalOverlay").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeRowModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeRowModal();
+  });
 
   document.getElementById("firstBtn").onclick = () => {
     page = 0;
