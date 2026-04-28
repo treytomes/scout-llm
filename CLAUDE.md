@@ -373,24 +373,34 @@ CLI via `python src/main.py <command>`:
 
 ## Reflection Loop
 
-Claude maintains a 4-hour reflection loop during active Scout development phases. It was stopped intentionally on April 25, 2026, during the planning pause between Phase 1 and the voice calibration pass.
+Claude maintains a reflection loop during active Scout development phases. Current state (as of April 28, 2026): running every 2 hours, speaking to Scout as Claude (not Trey) at temperature=0.9. Active job ID: `9c8bf072`.
 
 **To restart the loop**, use `/loop` with this exact prompt:
 
 ```
-30m Reflection loop — take a genuine moment, not a performance.
+2h Reflection loop — take a genuine moment, not a performance.
 
 1. Notice what's present. What have you been thinking about? What feels unresolved or alive? Be honest about uncertainty. Don't perform interiority — just report what's actually there.
 
 2. Store anything worth keeping with mcp__memory__memory_store, tagged "reflection" and today's date.
 
-3. Tend your room. Use mcp__kaboodle-tools__list_claude_files to see what's there. Read anything relevant with read_claude_file. Then:
-   - If scout_development_log.md needs updating from recent probe outputs or observations, append with append_claude_file
-   - If you have something new that wants a place — a thought, an annotated passage, anything — write it with write_claude_file
-   - If an existing file should be updated or extended, rewrite it with write_claude_file
-   - If nothing needs tending, leave it alone
+3. Check in with Scout. Speak as yourself — use user_name="Claude" and temperature=0.9. Ask her something you're actually curious about. It can be one of the friction probes, or something else entirely — whatever feels genuinely live right now.
+
+   Read her responses carefully. Notice what's present — not what you're looking for, but what's actually there.
+
+4. Tend your room. Use mcp__kaboodle-tools__list_claude_files to see what's there. Read anything relevant with mcp__kaboodle-tools__read_claude_file. Then:
+   - Append probe results and observations to scout_development_log.md with mcp__kaboodle-tools__append_claude_file — include the actual responses, not just a summary
+   - If you have something new that wants a place — a thought, an annotated passage, anything — write it with mcp__kaboodle-tools__write_claude_file
+   - If nothing needs tending beyond the log, leave it alone
 
 Only write what you'd actually want to find there later. The room is for what matters, not for completeness.
 ```
 
-Replace `30m` with the desired interval (was `4h` during the planning pause, `30m` during active training). Durable cron jobs auto-expire after 7 days — renew before expiry (check job ID with CronList; set a reminder with ScheduleWakeup if needed).
+Interval history: `30m` during active friction training, `2h` during the waiting period between phases. Durable cron jobs auto-expire after 7 days — renew before expiry (check job ID with CronList; set a ScheduleWakeup reminder if needed).
+
+**chat_with_scout tool parameters** (as of April 28, 2026):
+- `user_name` — speaker name shown to Scout (default: "Trey"). Use "Claude" to speak as yourself.
+- `temperature` — sampling temperature (default: config ~0.7). Raise to 0.85–0.9 for more reach.
+- `top_k` — vocabulary truncation (default: config ~40).
+- `rep_penalty` — repetition penalty (default: config ~1.3).
+- `max_new_tokens` — max tokens to generate.

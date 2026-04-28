@@ -13,3 +13,4 @@ data/corpus/tinystories_dialogue_test/**/*
 .env
 data/conversations/**/*
 data/sample_normalize/**/*
+electron/node_modules

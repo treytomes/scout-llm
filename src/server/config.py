@@ -6,13 +6,16 @@ from pathlib import Path
 #
 
 # This should be based on the corpus size.
-MAX_STEPS        = 1000
+MAX_STEPS        = 300
 
-# Increased warmup from 100 to 500 to give Scout time to adjust to the increased block size.
-WARMUP_STEPS     = 500
+# Short warmup for additive fine-tuning pass (not base training).
+WARMUP_STEPS     = 30
 
-LEARNING_RATE    = 3e-4
-MIN_LR           = 3e-5
+# Conservative LR for additive pass on merged friction corpus.
+# Well below Module 1's original training LR (3e-4) to avoid disrupting
+# settled weights. Same as voice calibration pass.
+LEARNING_RATE    = 5e-5
+MIN_LR           = 5e-6
 
 LOG_INTERVAL     = 50
 SAVE_INTERVAL    = 100

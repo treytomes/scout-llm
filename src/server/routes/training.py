@@ -86,6 +86,8 @@ def list_training_logs():
             "filename": log.filename,
             "date": log.log_date.isoformat(),
             "index": log.index,
+            "step_start": log.step_start,
+            "step_end": log.step_end,
         }
         for log in logs
     ]

@@ -181,3 +181,22 @@
   font-size: 12px;
   padding: 5px 16px;
 }
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  opacity: 0.75;
+}
+
+th.sort-active .sort-icon {
+  opacity: 1;
+}
+
+th.sortable .sort-icon {
+  opacity: 0.4;
+  margin-left: 4px;
+  font-style: normal;
+}

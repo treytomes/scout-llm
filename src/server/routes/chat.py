@@ -175,7 +175,7 @@ def _active_modules_to_skip(model, active_modules: list[int] | None) -> set[int]
 
 def _stream_response(conversation_id: str, prompt: str, checkpoint_filename: str = "latest.pt",
                      generation: GenerationParams = None, active_modules: list[int] = None,
-                     generation_log: dict = None):
+                     generation_log: dict = None, user_name: str = "Trey"):
     """Generator that streams tokens via SSE and persists the full response."""
     from cli_repl import stream_generate
 
@@ -194,7 +194,7 @@ def _stream_response(conversation_id: str, prompt: str, checkpoint_filename: str
     # Resolve active_modules to actual list for logging (default = all modules)
     resolved_active = active_modules if active_modules is not None else list(range(len(model.expert_modules)))
 
-    stop_sequences = ["[Trey]", "[Scout]"]
+    stop_sequences = list({f"[{user_name}]", "[Trey]", "[Scout]"})
     # Hold back this many chars so a stop sequence straddling two yields is
     # never emitted before we can detect it.
     max_stop_len = max(len(s) for s in stop_sequences)
@@ -339,7 +339,7 @@ def send_message(conversation_id: str, req: ChatMessageRequest):
     prompt = _format_prompt(conv["messages"])
 
     return StreamingResponse(
-        _stream_response(conversation_id, prompt, checkpoint_filename, req.generation, active_modules, generation_log),
+        _stream_response(conversation_id, prompt, checkpoint_filename, req.generation, active_modules, generation_log, req.user_name or "Trey"),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

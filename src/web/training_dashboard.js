@@ -208,31 +208,58 @@ function appendLivePoint(m) {
 
 // ── Log table ─────────────────────────────────────────────────────────────────
 
-async function loadTrainingLogs() {
-    const res = await fetch("/api/training/logs");
-    const logs = await res.json();
+let _allLogs = [];
+let _logSort = { col: "date", dir: "desc" };
 
+function _sortLogs(logs) {
+    const { col, dir } = _logSort;
+    return [...logs].sort((a, b) => {
+        const av = col === "index" ? a.index : a.date;
+        const bv = col === "index" ? b.index : b.date;
+        const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true });
+        return dir === "asc" ? cmp : -cmp;
+    });
+}
+
+function _renderLogs() {
     const body = document.getElementById("trainingLogsBody");
     body.innerHTML = "";
 
-    if (!logs.length) {
-        body.innerHTML = `<tr><td colspan="4" class="empty-state">No training logs yet.</td></tr>`;
+    if (!_allLogs.length) {
+        body.innerHTML = `<tr><td colspan="6" class="empty-state">No training logs yet.</td></tr>`;
         return;
     }
 
-    logs.forEach(log => {
+    _sortLogs(_allLogs).forEach(log => {
         const tr = document.createElement("tr");
         const btn = document.createElement("button");
         btn.className = "secondary";
         btn.textContent = "Load";
         btn.addEventListener("click", () => loadTrainingLog(log.filename));
 
-        tr.innerHTML = `<td>${log.filename}</td><td>${log.date}</td><td>${log.index}</td>`;
+        const stepStart = log.step_start ?? "—";
+        const stepEnd   = log.step_end   ?? "—";
+        tr.innerHTML = `<td>${log.filename}</td><td>${log.date}</td><td>${log.index}</td><td>${stepStart}</td><td>${stepEnd}</td>`;
         const td = document.createElement("td");
         td.appendChild(btn);
         tr.appendChild(td);
         body.appendChild(tr);
     });
+
+    // Update sort icons
+    document.querySelectorAll("th.sortable").forEach(th => {
+        const active = th.dataset.col === _logSort.col;
+        th.querySelector(".sort-icon").textContent = active
+            ? (_logSort.dir === "asc" ? "↑" : "↓")
+            : "↕";
+        th.classList.toggle("sort-active", active);
+    });
+}
+
+async function loadTrainingLogs() {
+    const res = await fetch("/api/training/logs");
+    _allLogs = await res.json();
+    _renderLogs();
 }
 
 async function loadTrainingLog(filename) {
@@ -271,6 +298,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("tdConfirmBtn").addEventListener("click", startTraining);
     document.getElementById("tdCancelBtn").addEventListener("click", hideTrainingDialog);
     document.getElementById("stopBtn").addEventListener("click", stopTraining);
+
+    document.querySelectorAll("th.sortable").forEach(th => {
+        th.addEventListener("click", () => {
+            const col = th.dataset.col;
+            if (_logSort.col === col) {
+                _logSort.dir = _logSort.dir === "asc" ? "desc" : "asc";
+            } else {
+                _logSort = { col, dir: "desc" };
+            }
+            _renderLogs();
+        });
+    });
 
     loadTrainingLogs();
 

@@ -12,6 +12,8 @@ class TrainingLogModel:
     log_date: date
     index: int
     entries: List[TrainingLogEntry] = field(default_factory=list)
+    step_start: int | None = None
+    step_end: int | None = None
 
 
     @property

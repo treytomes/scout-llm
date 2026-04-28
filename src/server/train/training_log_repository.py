@@ -13,16 +13,34 @@ class TrainingLogRepository:
         self.root.mkdir(parents=True, exist_ok=True)
 
 
+    @staticmethod
+    def _step_range(path: Path) -> tuple[int | None, int | None]:
+        """Return (first_step, last_step) by reading only header + data rows."""
+        first = last = None
+        with open(path, newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    step = int(row["step"])
+                except (KeyError, ValueError):
+                    continue
+                if first is None:
+                    first = step
+                last = step
+        return first, last
+
     def list_logs(self) -> List[TrainingLogModel]:
         logs = []
         for path in sorted(self.root.glob("training_*.csv")):
             log_date, idx = TrainingLogModel.parse_filename(path)
-
+            step_start, step_end = self._step_range(path)
             logs.append(
                 TrainingLogModel(
                     path=path,
                     log_date=log_date,
                     index=idx,
+                    step_start=step_start,
+                    step_end=step_end,
                 )
             )
         return logs
